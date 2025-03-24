@@ -1,0 +1,14 @@
+{
+	"name": "true-pg",
+	"module": "src/index.ts",
+	"type": "module",
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"extract-pg-schema": "../../experiments/extract-pg-schema/"
+	}
+}

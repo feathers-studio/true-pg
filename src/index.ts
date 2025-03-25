@@ -1,12 +1,12 @@
 import {
-	extractSchemas,
+	Extractor,
 	type CompositeTypeAttribute,
 	type CompositeTypeDetails,
 	type EnumDetails,
 	type FunctionDetails,
 	type TableColumn,
 	type TableDetails,
-} from "extract-pg-schema";
+} from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
 
 export interface TruePGOpts {
@@ -48,7 +48,9 @@ export const TruePG: createGenerator = () => {
 		},
 
 		enum(en: EnumDetails) {
-			let out = `export type ${en.name} = ${en.values.map(v => `"${v}"`).join(" | ")};\n`;
+			let out = `export interface ${en.name} {\n`;
+			for (const v of en.values) out += `\t${v};\n`;
+			out += "}\n";
 			return out;
 		},
 
@@ -64,19 +66,11 @@ export const TruePG: createGenerator = () => {
 		},
 
 		composite_type(type: CompositeTypeDetails) {
-			let out = `export type ${type.name} = {\n`;
+			let out = `export interface ${type.name} {\n`;
 
 			const props = type.attributes.map(c => this.composite_attribute(c)).map(t => `\t${t};`);
 			out += props.join("\n");
 			out += "\n}\n";
-
-			return out;
-		},
-
-		function_return_table(type: Exclude<FunctionDetails["returnType"], string>) {
-			let out = `{\n`;
-			for (const col of type.columns) out += `\t${col.name}: ${col.type};\n`;
-			out += "}";
 
 			return out;
 		},
@@ -89,18 +83,26 @@ export const TruePG: createGenerator = () => {
 				out += ` * ${type.comment}\n`;
 				out += " */\n";
 			}
-			out += "export function ";
-
+			out += "export interface ";
 			out += type.name;
+			out += " {\n\t";
 
 			// Get the input parameters (those that appear in function signature)
 			const inputParams = type.parameters.filter(
 				p => p.mode === "IN" || p.mode === "INOUT" || p.mode === "VARIADIC",
 			);
 
-			// If there are input parameters, create a params object
-			if (inputParams.length > 0) {
-				out += "(\n\tparams: {\n";
+			if (inputParams.length === 0) {
+				out += "(): ";
+			} else if (inputParams.length === 1) {
+				out += "(";
+				out += inputParams[0]!.name;
+				out += ": ";
+				out += inputParams[0]!.type.canonical_name;
+				if (inputParams[0]!.type.dimensions > 0) out += "[]".repeat(inputParams[0]!.type.dimensions);
+				out += "): ";
+			} else if (inputParams.length > 0) {
+				out += "(\n";
 
 				for (const param of inputParams) {
 					// Handle variadic parameters differently if needed
@@ -108,37 +110,42 @@ export const TruePG: createGenerator = () => {
 					const paramName = isVariadic ? `...${param.name}` : param.name;
 
 					out += `\t\t${paramName}`;
-					if (param.hasDefault) out += "?";
+					if (param.hasDefault && !isVariadic) out += "?";
 					// TODO: update imports for non-primitive types based on typeInfo.kind
-					out += `: ${param.typeInfo.fullName}`;
-					out += ";\n";
+					out += `: ${param.type.canonical_name}`;
+					if (param.type.dimensions > 0) out += "[]".repeat(param.type.dimensions);
+					if (!isVariadic) out += ",";
+					out += "\n";
 				}
 
-				out += "\t}\n): ";
-			} else {
-				// No parameters
-				out += "(): ";
+				out += "\t): ";
 			}
 
-			if (type.returnTypeInfo.isTable) {
+			if (type.returnType.kind === "table") {
 				out += "{\n";
-				for (const col of type.returnTypeInfo.columns!) {
-					out += `\t${col.name}: ${col.type};\n`;
+				for (const col of type.returnType.columns) {
+					out += `\t\t${col.name}: `;
+					out += col.type.canonical_name;
+					if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
+					out += `;\n`;
 				}
-				out += "}";
-			} else out += type.returnTypeInfo.fullName;
+				out += "\t}";
+			} else {
+				out += type.returnType.type.canonical_name;
+				if (type.returnType.type.dimensions > 0) out += "[]".repeat(type.returnType.type.dimensions);
+			}
 
 			// Add array brackets based on dimensions
-			if (type.returnTypeInfo.dimensions > 0) {
-				out += "[]".repeat(type.returnTypeInfo.dimensions);
+			if (type.returnType.kind === "regular" && type.returnType.type.dimensions > 0) {
+				out += "[]".repeat(type.returnType.type.dimensions);
 			}
 
 			// Add additional array brackets if it returns a set
-			if (type.returnTypeInfo.isSet) {
+			if (type.returnType.isSet) {
 				out += "[]";
 			}
 
-			out += ";\n";
+			out += ";\n}\n";
 
 			return out;
 		},
@@ -164,7 +171,9 @@ export const TruePG: createGenerator = () => {
 export async function generate(opts: TruePGOpts) {
 	const { connectionString, outDir } = opts;
 
-	const schemas = await extractSchemas({ connectionString });
+	const extractor = new Extractor(connectionString);
+
+	const schemas = await extractor.extractSchemas();
 
 	await rm(outDir, { recursive: true, force: true });
 	await mkdir(outDir, { recursive: true });
@@ -172,28 +181,30 @@ export async function generate(opts: TruePGOpts) {
 	const generator = TruePG();
 
 	for (const schema of Object.values(schemas)) {
-		await mkdir(`${outDir}/${schema.name}/tables`, { recursive: true });
+		const schemaDir = `${outDir}/${schema.name}`;
+
+		await mkdir(`${schemaDir}/tables`, { recursive: true });
 
 		for (const table of schema.tables) {
-			await writeFile(`${outDir}/${schema.name}/tables/${table.name}.ts`, generator.table(table));
+			await writeFile(`${schemaDir}/tables/${table.name}.ts`, generator.table(table));
 		}
 
-		await mkdir(`${outDir}/${schema.name}/enums`, { recursive: true });
+		await mkdir(`${schemaDir}/enums`, { recursive: true });
 
 		for (const en of schema.enums) {
-			await writeFile(`${outDir}/${schema.name}/enums/${en.name}.ts`, generator.enum(en));
+			await writeFile(`${schemaDir}/enums/${en.name}.ts`, generator.enum(en));
 		}
 
-		await mkdir(`${outDir}/${schema.name}/composite_types`, { recursive: true });
+		await mkdir(`${schemaDir}/composite_types`, { recursive: true });
 
 		for (const type of schema.compositeTypes) {
-			await writeFile(`${outDir}/${schema.name}/composite_types/${type.name}.ts`, generator.composite_type(type));
+			await writeFile(`${schemaDir}/composite_types/${type.name}.ts`, generator.composite_type(type));
 		}
 
-		await mkdir(`${outDir}/${schema.name}/functions`, { recursive: true });
+		await mkdir(`${schemaDir}/functions`, { recursive: true });
 
 		for (const func of schema.functions) {
-			await writeFile(`${outDir}/${schema.name}/functions/${func.name}.ts`, generator.function(func));
+			await writeFile(`${schemaDir}/functions/${func.name}.ts`, generator.function(func));
 		}
 	}
 }

@@ -1,6 +1,6 @@
 import {
 	Extractor,
-	type CompositeTypeAttribute,
+	type CanonicalType,
 	type CompositeTypeDetails,
 	type EnumDetails,
 	type FunctionDetails,
@@ -12,11 +12,12 @@ import { rm, mkdir, writeFile } from "fs/promises";
 export interface TruePGOpts {
 	connectionString: string;
 	outDir: string;
+	enumTo?: "union" | "enum";
 }
 
 export interface Generator {
 	table(table: TableDetails): string;
-	enum(en: EnumDetails): string;
+	enum(en: EnumDetails, to?: "union" | "enum"): string;
 	composite_type(type: CompositeTypeDetails): string;
 	function(type: FunctionDetails): string;
 }
@@ -25,50 +26,54 @@ export interface createGenerator {
 	(): Generator;
 }
 
-export const TruePG: createGenerator = () => {
-	const generator = {
-		column(col: TableColumn) {
-			let out = col.name;
+export const TruePG: createGenerator = (): Generator => {
+	const column = (col: TableColumn) => {
+		let out = col.name;
 
-			if (col.isNullable) out += "?";
-			// TODO: update imports for non-primitive types
-			out += `: ${col.type.fullName}`;
-			if (col.dimensions) out += "[]".repeat(col.dimensions);
-			if (col.isNullable) out += " | null";
+		if (col.isNullable) out += "?";
+		// TODO: update imports for non-primitive types
+		out += `: ${col.type.fullName}`;
+		if (col.dimensions) out += "[]".repeat(col.dimensions);
+		if (col.isNullable) out += " | null";
 
-			return out;
-		},
+		return out;
+	};
 
+	const composite_attribute = (attr: CanonicalType.CompositeAttribute) => {
+		let out = attr.name;
+
+		if (attr.isNullable) out += "?";
+		out += `: ${attr.type.canonical_name}`;
+		if (attr.type.dimensions > 0) out += "[]".repeat(attr.type.dimensions);
+		if (attr.isNullable) out += " | null";
+
+		return out;
+	};
+
+	return {
 		table(table: TableDetails) {
 			let out = `export interface ${table.name} {\n`;
-			for (const col of table.columns) out += `\t${this.column(col)};\n`;
+			for (const col of table.columns) out += `\t${column(col)};\n`;
 			out += "}\n";
 
 			return out;
 		},
 
-		enum(en: EnumDetails) {
-			let out = `export interface ${en.name} {\n`;
-			for (const v of en.values) out += `\t${v};\n`;
-			out += "}\n";
-			return out;
-		},
-
-		composite_attribute(attr: CompositeTypeAttribute) {
-			let out = attr.name;
-
-			if (attr.isNullable) out += "?";
-			out += `: ${attr.type.fullName}`;
-			if (attr.isArray) out += "[]";
-			if (attr.isNullable) out += " | null";
-
-			return out;
+		enum(en: EnumDetails, to: "union" | "enum" = "union") {
+			if (to === "union") {
+				return `export type ${en.name} = ${en.values.map(v => `"${v}"`).join(" | ")};\n`;
+			} else {
+				let out = `export enum ${en.name} {\n`;
+				for (const v of en.values) out += `\t"${v}" = "${v}",\n`;
+				out += "}\n";
+				return out;
+			}
 		},
 
 		composite_type(type: CompositeTypeDetails) {
 			let out = `export interface ${type.name} {\n`;
 
-			const props = type.attributes.map(c => this.composite_attribute(c)).map(t => `\t${t};`);
+			const props = type.canonical.attributes.map(c => composite_attribute(c)).map(t => `\t${t};`);
 			out += props.join("\n");
 			out += "\n}\n";
 
@@ -78,11 +83,12 @@ export const TruePG: createGenerator = () => {
 		function(type: FunctionDetails) {
 			let out = "";
 
-			if (type.comment) {
-				out += "/**\n";
-				out += ` * ${type.comment}\n`;
-				out += " */\n";
-			}
+			out += "/**\n";
+			if (type.comment) out += ` * ${type.comment}\n`;
+			out += ` * @volatility ${type.volatility}\n`;
+			out += ` * @parallelSafety ${type.parallelSafety}\n`;
+			out += ` * @isStrict ${type.isStrict}\n`;
+			out += " */\n";
 			out += "export interface ";
 			out += type.name;
 			out += " {\n\t";
@@ -149,23 +155,7 @@ export const TruePG: createGenerator = () => {
 
 			return out;
 		},
-
-		// Add a helper method to explain volatility
-		explainVolatility(volatility: FunctionDetails["volatility"]): string {
-			switch (volatility) {
-				case "IMMUTABLE":
-					return "Function cannot modify the database and always returns the same result given the same arguments";
-				case "STABLE":
-					return "Function cannot modify the database and returns the same result given the same arguments within a single table scan";
-				case "VOLATILE":
-					return "Function can modify the database and may return different results on successive calls with the same arguments";
-				default:
-					return "";
-			}
-		},
 	};
-
-	return generator;
 };
 
 export async function generate(opts: TruePGOpts) {
@@ -192,7 +182,7 @@ export async function generate(opts: TruePGOpts) {
 		await mkdir(`${schemaDir}/enums`, { recursive: true });
 
 		for (const en of schema.enums) {
-			await writeFile(`${schemaDir}/enums/${en.name}.ts`, generator.enum(en));
+			await writeFile(`${schemaDir}/enums/${en.name}.ts`, generator.enum(en, opts.enumTo));
 		}
 
 		await mkdir(`${schemaDir}/composite_types`, { recursive: true });

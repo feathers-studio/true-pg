@@ -18,7 +18,7 @@ export interface TruePGOpts {
 export interface Generator {
 	table(table: TableDetails): string;
 	enum(en: EnumDetails, to?: "union" | "enum"): string;
-	composite_type(type: CompositeTypeDetails): string;
+	compositeType(type: CompositeTypeDetails): string;
 	function(type: FunctionDetails): string;
 }
 
@@ -81,7 +81,7 @@ export const TruePG: createGenerator = (): Generator => {
 			return out;
 		},
 
-		composite_type(type: CompositeTypeDetails) {
+		compositeType(type: CompositeTypeDetails) {
 			let out = "";
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
@@ -179,45 +179,29 @@ export async function generate(opts: TruePGOpts) {
 
 	const schemas = await extractor.extractSchemas();
 
-	console.log("Clearing outDir %s", outDir);
+	console.log("Clearing directory and generating schemas at '%s'", outDir);
 	await rm(outDir, { recursive: true, force: true });
 	await mkdir(outDir, { recursive: true });
 
 	const generator = TruePG();
 
-	console.log("Generating schemas at %s", outDir);
-
 	for (const schema of Object.values(schemas)) {
-		console.log("Generating schema %s", schema.name);
+		console.log("Selected schema '%s':", schema.name);
 
 		const schemaDir = `${outDir}/${schema.name}`;
 
-		await mkdir(`${schemaDir}/tables`, { recursive: true });
+		const supported = ["tables", "enums", "compositeTypes", "functions"] as const;
 
-		for (const table of schema.tables) {
-			console.log("Creating table %s at %s", table.name, `${schemaDir}/tables/${table.name}.ts`);
-			await writeFile(`${schemaDir}/tables/${table.name}.ts`, generator.table(table));
-		}
-
-		await mkdir(`${schemaDir}/enums`, { recursive: true });
-
-		for (const en of schema.enums) {
-			console.log("Creating enum %s at %s", en.name, `${schemaDir}/enums/${en.name}.ts`);
-			await writeFile(`${schemaDir}/enums/${en.name}.ts`, generator.enum(en, opts.enumTo));
-		}
-
-		await mkdir(`${schemaDir}/composite_types`, { recursive: true });
-
-		for (const type of schema.compositeTypes) {
-			console.log("Creating composite type %s at %s", type.name, `${schemaDir}/composite_types/${type.name}.ts`);
-			await writeFile(`${schemaDir}/composite_types/${type.name}.ts`, generator.composite_type(type));
-		}
-
-		await mkdir(`${schemaDir}/functions`, { recursive: true });
-
-		for (const func of schema.functions) {
-			console.log("Creating function %s at %s", func.name, `${schemaDir}/functions/${func.name}.ts`);
-			await writeFile(`${schemaDir}/functions/${func.name}.ts`, generator.function(func));
+		for (const type of supported) {
+			if (schema[type].length > 0) await mkdir(`${schemaDir}/${type}`, { recursive: true });
+			console.log("  Creating %s:", type);
+			for (const [index, item] of schema[type].entries()) {
+				const filename = `${schemaDir}/${type}/${item.name}.ts`;
+				console.log(`    ✅ [${(String(index + 1) + "]").padEnd(3, " ")} ${filename}`);
+				// @ts-expect-error item and item.kind are related, but type system is not dependent, sad
+				const file = generator[item.kind](item);
+				await writeFile(filename, file);
+			}
 		}
 	}
 }

@@ -16,15 +16,52 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 
 		const supported = ["tables", "enums", "composites", "functions"] as const;
 
-		for (const type of supported) {
-			if (schema[type].length < 1) continue;
+		schema.functions = schema.functions
+			.map(func => {
+				const typesToFilter = [
+					"pg_catalog.trigger",
+					"pg_catalog.event_trigger",
+					"pg_catalog.internal",
+					"pg_catalog.language_handler",
+					"pg_catalog.fdw_handler",
+					"pg_catalog.index_am_handler",
+					"pg_catalog.tsm_handler",
+				];
 
-			await mkdir(`${schemaDir}/${type}`, { recursive: true });
-			console.log(" Creating %s:", type);
+				if (func.returnType.kind === "table") {
+					for (const col of func.returnType.columns) {
+						if (typesToFilter.includes(col.type.canonical_name)) {
+							console.warn("Skipping function %s: %s", func.name, col.type.canonical_name);
+							return null;
+						}
+					}
+				} else {
+					if (typesToFilter.includes(func.returnType.type.canonical_name)) {
+						console.warn("Skipping function %s: %s", func.name, func.returnType.type.canonical_name);
+						return null;
+					}
+				}
 
-			for (const [i, item] of schema[type].entries()) {
+				for (const param of func.parameters) {
+					if (typesToFilter.includes(param.type.canonical_name)) {
+						console.warn("Skipping function %s: %s", func.name, param.type.canonical_name);
+						return null;
+					}
+				}
+
+				return func;
+			})
+			.filter(x => x !== null);
+
+		for (const kind of supported) {
+			if (schema[kind].length < 1) continue;
+
+			await mkdir(`${schemaDir}/${kind}`, { recursive: true });
+			console.log(" Creating %s:", kind);
+
+			for (const [i, item] of schema[kind].entries()) {
 				const index = "[" + (i + 1 + "]").padEnd(3, " ");
-				const filename = `${schemaDir}/${type}/${generator.formatSchemaType(item)}.ts`;
+				const filename = `${schemaDir}/${kind}/${generator.formatSchemaType(item)}.ts`;
 
 				const exists = await existsSync(filename);
 
@@ -43,40 +80,7 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 				if (item.kind === "table") file += generator.table(types, item);
 				if (item.kind === "composite") file += generator.composite(types, item);
 				if (item.kind === "enum") file += generator.enum(types, item);
-				if (item.kind === "function") {
-					const typesToFilter = [
-						"pg_catalog.trigger",
-						"pg_catalog.event_trigger",
-						"pg_catalog.internal",
-						"pg_catalog.language_handler",
-						"pg_catalog.fdw_handler",
-						"pg_catalog.index_am_handler",
-						"pg_catalog.tsm_handler",
-					];
-
-					if (item.returnType.kind === "table") {
-						for (const col of item.returnType.columns) {
-							if (typesToFilter.includes(col.type.canonical_name)) {
-								console.warn("Skipping function %s: %s", item.name, col.type.canonical_name);
-								continue;
-							}
-						}
-					} else {
-						if (typesToFilter.includes(item.returnType.type.canonical_name)) {
-							console.warn("Skipping function %s: %s", item.name, item.returnType.type.canonical_name);
-							continue;
-						}
-					}
-
-					for (const param of item.parameters) {
-						if (typesToFilter.includes(param.type.canonical_name)) {
-							console.warn("Skipping function %s: %s", item.name, param.type.canonical_name);
-							continue;
-						}
-					}
-
-					file += generator.function(types, item);
-				}
+				if (item.kind === "function") file += generator.function(types, item);
 
 				const imports = generator.imports(types, { schema: schema.name, kind: item.kind });
 
@@ -87,6 +91,11 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 
 				await writeFile(filename, parts.filter(Boolean).join("\n\n"));
 			}
+
+			const kindIndex = generator.schemaKindIndex(schema, kind);
+			const kindIndexFilename = `${schemaDir}/${kind}/index.ts`;
+			await writeFile(kindIndexFilename, kindIndex);
+			console.log(" Created kind index: %s", kindIndexFilename);
 		}
 
 		const index = generator.schemaIndex(schema);

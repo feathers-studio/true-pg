@@ -2,13 +2,21 @@ import type { CanonicalType, Schema, TableColumn } from "pg-extract";
 import type { createGenerator, SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 
+const isIdentifierInvalid = (str: string) => {
+	const invalid = str.match(/[^a-zA-Z0-9_]/);
+	return invalid !== null;
+};
+
 const toPascalCase = (str: string) =>
 	str
 		.replace(" ", "_")
 		.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 		.replace(/^([a-z])/, (_, letter) => letter.toUpperCase());
 
-export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenerator => {
+export const Kysely: createGenerator = (opts): SchemaGenerator => {
+	const defaultSchema = opts?.defaultSchema ?? "public";
+	const enumTo = opts?.enumTo ?? "enum";
+
 	const column = (
 		generator: SchemaGenerator,
 		/** @out Append used types to this array */
@@ -89,7 +97,7 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 
 			if (en.comment) out += `/** ${en.comment} */\n`;
 
-			if (opts.enumTo === "union") {
+			if (enumTo === "union") {
 				out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};\n`;
 			} else {
 				out += `export enum ${this.formatSchemaType(en)} {\n`;
@@ -232,35 +240,52 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 			return imports.join("\n");
 		},
 
+		schemaKindIndex(schema, kind) {
+			const imports = schema[kind];
+			if (imports.length === 0) return "";
+
+			return (
+				imports
+					.map(each => {
+						const name = this.formatSchemaType(each);
+						return `export type { ${name} } from "./${name}.ts";`;
+					})
+					.join("\n") + "\n"
+			);
+		},
+
 		schemaIndex(schema) {
-			// Kysely only wants tables
-			const tables = schema.tables;
+			const supported_kinds = ["tables", "enums", "composites", "functions"] as const;
 
-			let out = "";
+			let out = supported_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
 
-			const seen = new Set<string>();
-			const formatted = tables
-				.map(each => {
-					const formatted = this.formatSchemaType(each);
-					// skip clashing names
-					if (seen.has(formatted)) return;
-					seen.add(formatted);
-					return { ...each, formatted };
-				})
-				.filter(x => x !== undefined);
-
-			out += formatted
-				.map(t => {
-					const name = t.formatted;
-					return `import type { ${name} } from "./${t.kind}s/${name}.ts";`;
-				})
-				.filter(Boolean)
-				.join("\n");
-
-			if (out.length) out += "\n\n";
+			out += "\n\n";
 			out += `export interface ${this.formatSchema(schema.name)} {\n`;
-			out += formatted.map(t => `\t${t.name}: ${t.formatted};`).join("\n");
-			out += "\n}\n";
+
+			for (const kind of supported_kinds) {
+				const items = schema[kind];
+				if (items.length === 0) continue;
+
+				out += `\t${kind}: {\n`;
+
+				const formatted = items
+					.map(each => {
+						const formatted = this.formatSchemaType(each);
+						return { ...each, formatted };
+					})
+					.filter(x => x !== undefined);
+
+				out += formatted
+					.map(t => {
+						let name = t.name;
+						if (isIdentifierInvalid(name)) name = `"${name}"`;
+						return `\t\t${name}: ${t.kind}s.${t.formatted};`;
+					})
+					.join("\n");
+				out += "\n\t};\n";
+			}
+
+			out += "}\n";
 
 			return out;
 		},
@@ -274,10 +299,43 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 
 			out += "\n\n";
 			out += `export interface Database {\n`;
-			out += schemas.map(s => `\t${this.formatSchema(s.name)}: ${this.formatSchema(s.name)};\n`).join("");
-			out += "}\n";
+			out += schemas
+				.map(schema => {
+					// Kysely only wants tables
+					const tables = schema.tables;
 
-			return out;
+					let out = "";
+
+					const seen = new Set<string>();
+					const formatted = tables
+						.map(each => {
+							const formatted = this.formatSchemaType(each);
+							// skip clashing names
+							if (seen.has(formatted)) return;
+							seen.add(formatted);
+							return { ...each, formatted };
+						})
+						.filter(x => x !== undefined);
+
+					if (out.length) out += "\n\n";
+					out += formatted
+						.map(t => {
+							const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
+							let qualified = prefix + t.name;
+							if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
+							return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
+						})
+						.join("\n");
+
+					return out;
+				})
+				.join("");
+
+			out += "\n}\n\n";
+
+			out += schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n");
+
+			return out + "\n";
 		},
 	};
 };

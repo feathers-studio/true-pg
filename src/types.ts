@@ -16,8 +16,13 @@ export interface TruePGOpts {
 	enumTo?: "union" | "enum";
 }
 
+export interface CreateGeneratorOpts {
+	defaultSchema?: string;
+	enumTo?: "union" | "enum";
+}
+
 export interface createGenerator {
-	(opts?: { enumTo?: "union" | "enum" }): SchemaGenerator;
+	(opts?: CreateGeneratorOpts): SchemaGenerator;
 }
 
 export interface SchemaGenerator {
@@ -71,6 +76,8 @@ export interface SchemaGenerator {
 	): string;
 
 	imports(types: CanonicalType[], context: { schema: string; kind: PgType["kind"] }): string;
+
+	schemaKindIndex(schema: Schema, kind: Exclude<keyof Schema, "name">): string;
 
 	schemaIndex(schema: Schema): string;
 

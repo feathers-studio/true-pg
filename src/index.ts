@@ -43,7 +43,40 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 				if (item.kind === "table") file += generator.table(types, item);
 				if (item.kind === "composite") file += generator.composite(types, item);
 				if (item.kind === "enum") file += generator.enum(types, item);
-				if (item.kind === "function") file += generator.function(types, item);
+				if (item.kind === "function") {
+					const typesToFilter = [
+						"pg_catalog.trigger",
+						"pg_catalog.event_trigger",
+						"pg_catalog.internal",
+						"pg_catalog.language_handler",
+						"pg_catalog.fdw_handler",
+						"pg_catalog.index_am_handler",
+						"pg_catalog.tsm_handler",
+					];
+
+					if (item.returnType.kind === "table") {
+						for (const col of item.returnType.columns) {
+							if (typesToFilter.includes(col.type.canonical_name)) {
+								console.warn("Skipping function %s: %s", item.name, col.type.canonical_name);
+								continue;
+							}
+						}
+					} else {
+						if (typesToFilter.includes(item.returnType.type.canonical_name)) {
+							console.warn("Skipping function %s: %s", item.name, item.returnType.type.canonical_name);
+							continue;
+						}
+					}
+
+					for (const param of item.parameters) {
+						if (typesToFilter.includes(param.type.canonical_name)) {
+							console.warn("Skipping function %s: %s", item.name, param.type.canonical_name);
+							continue;
+						}
+					}
+
+					file += generator.function(types, item);
+				}
 
 				const imports = generator.imports(types, { schema: schema.name, kind: item.kind });
 
@@ -52,7 +85,7 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 				parts.push(imports);
 				parts.push(file);
 
-				await writeFile(filename, parts.join("\n\n"));
+				await writeFile(filename, parts.filter(Boolean).join("\n\n"));
 			}
 		}
 

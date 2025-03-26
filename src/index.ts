@@ -1,7 +1,7 @@
 import { Extractor, type CanonicalType, type Schema } from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
 import type { SchemaGenerator, TruePGOpts } from "./types.ts";
-import { Kysely } from "./kysely.ts";
+import { Kysely } from "./kysely/index.ts";
 import { existsSync } from "fs";
 
 export * from "./consumer.ts";

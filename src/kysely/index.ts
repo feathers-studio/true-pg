@@ -1,5 +1,6 @@
 import type { CanonicalType, Schema, TableColumn } from "pg-extract";
-import type { createGenerator, SchemaGenerator } from "./types";
+import type { createGenerator, SchemaGenerator } from "../types.ts";
+import { builtins } from "./builtins.ts";
 
 const toPascalCase = (str: string) =>
 	str
@@ -60,7 +61,15 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 		},
 
 		formatType(type) {
-			if (type.schema === "pg_catalog") return type.canonical_name;
+			if (type.schema === "pg_catalog") {
+				const name = type.canonical_name;
+				const format = builtins[name];
+				if (format) return format;
+				console.warn(
+					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
+				);
+				return "unknown";
+			}
 			return toPascalCase(type.name);
 		},
 
@@ -192,10 +201,7 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 				})
 				.map(t => ({ ...t, formatted: this.formatType(t) }));
 
-			const needs_catalog = types.some(t => t.schema === "pg_catalog");
-
 			const imports: string[] = [];
-			if (needs_catalog) imports.push(`import type { pg_catalog } from "../../pg_catalog.ts";`);
 
 			const current_kind = unique_types //
 				.filter(t => t.schema === context.schema && t.kind === context.kind);
@@ -251,7 +257,7 @@ export const Kysely: createGenerator = (opts = { enumTo: "enum" }): SchemaGenera
 				.filter(Boolean)
 				.join("\n");
 
-			out += "\n\n";
+			if (out.length) out += "\n\n";
 			out += `export interface ${this.formatSchema(schema.name)} {\n`;
 			out += formatted.map(t => `\t${t.name}: ${t.formatted};`).join("\n");
 			out += "\n}\n";

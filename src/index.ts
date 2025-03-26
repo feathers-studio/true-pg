@@ -1,7 +1,7 @@
 import { Extractor, type CanonicalType, type SchemaType } from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
 import type { TruePGOpts } from "./types.ts";
-import { TypeScript } from "./typescript.ts";
+import { Kysely } from "./kysely.ts";
 
 export * from "./consumer.ts";
 
@@ -16,7 +16,7 @@ export async function generate(opts: TruePGOpts) {
 	await rm(outDir, { recursive: true, force: true });
 	await mkdir(outDir, { recursive: true });
 
-	const generator = TypeScript("absolute", opts);
+	const generator = Kysely(opts);
 
 	for (const schema of Object.values(schemas)) {
 		console.log("Selected schema '%s':", schema.name);
@@ -48,7 +48,13 @@ export async function generate(opts: TruePGOpts) {
 				if (item.kind === "function") file += generator.function(types, item);
 
 				const imports = generator.imports(types, { schema: schema.name, kind: item.kind });
-				await writeFile(filename, [imports, file].join("\n"));
+
+				const parts: string[] = [];
+				if (item.kind === "table") parts.push(`import * as K from "kysely";`);
+				parts.push(imports);
+				parts.push(file);
+
+				await writeFile(filename, parts.join("\n"));
 			}
 		}
 

@@ -15,10 +15,8 @@ export interface TruePGOpts {
 }
 
 export interface createGenerator {
-	(mode: GeneratorMode, opts?: { enumTo?: "union" | "enum" }): Generator;
+	(opts?: { enumTo?: "union" | "enum" }): Generator;
 }
-
-export type GeneratorMode = "absolute" | "insert" | "update";
 
 export interface Generator {
 	/**

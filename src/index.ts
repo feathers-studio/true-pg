@@ -1,28 +1,18 @@
-import { Extractor, type CanonicalType, type SchemaType } from "pg-extract";
+import { Extractor, type CanonicalType, type Schema } from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
-import type { TruePGOpts } from "./types.ts";
+import type { SchemaGenerator, TruePGOpts } from "./types.ts";
 import { Kysely } from "./kysely.ts";
+import { existsSync } from "fs";
 
 export * from "./consumer.ts";
 
-export async function generate(opts: TruePGOpts) {
-	const { connectionString, outDir } = opts;
-
-	const extractor = new Extractor(connectionString);
-
-	const schemas = await extractor.extractSchemas();
-
-	console.log("Clearing directory and generating schemas at '%s'", outDir);
-	await rm(outDir, { recursive: true, force: true });
-	await mkdir(outDir, { recursive: true });
-
-	const generator = Kysely(opts);
+const multifile = async (generator: SchemaGenerator, schemas: Record<string, Schema>, opts: TruePGOpts) => {
+	const { outDir } = opts;
 
 	for (const schema of Object.values(schemas)) {
 		console.log("Selected schema '%s':", schema.name);
 
 		const schemaDir = `${outDir}/${schema.name}`;
-		const schemaTypes: SchemaType[] = [];
 
 		const supported = ["tables", "enums", "composites", "functions"] as const;
 
@@ -30,13 +20,21 @@ export async function generate(opts: TruePGOpts) {
 			if (schema[type].length < 1) continue;
 
 			await mkdir(`${schemaDir}/${type}`, { recursive: true });
-			console.log("  Creating %s:", type);
+			console.log(" Creating %s:", type);
 
-			for (const [index, item] of schema[type].entries()) {
-				schemaTypes.push(item);
+			for (const [i, item] of schema[type].entries()) {
+				const index = "[" + (i + 1 + "]").padEnd(3, " ");
+				const filename = `${schemaDir}/${type}/${generator.formatSchemaType(item)}.ts`;
 
-				const filename = `${schemaDir}/${type}/${item.name}.ts`;
-				console.log(`    ✅ [${(String(index + 1) + "]").padEnd(3, " ")} ${filename}`);
+				const exists = await existsSync(filename);
+
+				if (exists) {
+					console.warn('  %s ⚠️ Skipping %s "%s":', index, item.kind, item.name);
+					console.warn("     formatted name clashes. Wanted to create %s", filename);
+					continue;
+				}
+
+				console.log("  %s %s", index, filename);
 
 				const types: CanonicalType[] = [];
 
@@ -54,16 +52,34 @@ export async function generate(opts: TruePGOpts) {
 				parts.push(imports);
 				parts.push(file);
 
-				await writeFile(filename, parts.join("\n"));
+				await writeFile(filename, parts.join("\n\n"));
 			}
 		}
 
-		const index = generator.schemaIndex(schemaTypes);
-		await writeFile(`${outDir}/${schema.name}/index.ts`, index);
+		const index = generator.schemaIndex(schema);
+		const indexFilename = `${outDir}/${schema.name}/index.ts`;
+		await writeFile(indexFilename, index);
+		console.log(" Created schema index: %s", indexFilename);
 	}
 
-	const fullIndex = generator.fullIndex(Object.keys(schemas));
-	await writeFile(`${outDir}/index.ts`, fullIndex);
+	const fullIndex = generator.fullIndex(Object.values(schemas));
+	const fullIndexFilename = `${outDir}/index.ts`;
+	await writeFile(fullIndexFilename, fullIndex);
+	console.log("Created full index: %s", fullIndexFilename);
+};
+
+export async function generate(opts: TruePGOpts) {
+	const extractor = new Extractor(opts.connectionString);
+
+	const schemas = await extractor.extractSchemas();
+
+	const generator = Kysely(opts);
+
+	console.log("Clearing directory and generating schemas at '%s'", outDir);
+	await rm(outDir, { recursive: true, force: true });
+	await mkdir(outDir, { recursive: true });
+
+	await multifile(generator, schemas, opts);
 }
 
 const connectionString = "postgres://mkrcal:mkrcal@localhost:5432/mkrcal";

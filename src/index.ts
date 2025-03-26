@@ -1,4 +1,4 @@
-import { Extractor, type CanonicalType, type Schema } from "pg-extract";
+import { Extractor, type CanonicalType, type FunctionDetails, type Schema } from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
 import type { SchemaGenerator, TruePGOpts } from "./types.ts";
 import { Kysely } from "./kysely/index.ts";
@@ -6,52 +6,52 @@ import { existsSync } from "fs";
 
 export * from "./consumer.ts";
 
+const filter_function = (func: FunctionDetails) => {
+	const typesToFilter = [
+		"pg_catalog.trigger",
+		"pg_catalog.event_trigger",
+		"pg_catalog.internal",
+		"pg_catalog.language_handler",
+		"pg_catalog.fdw_handler",
+		"pg_catalog.index_am_handler",
+		"pg_catalog.tsm_handler",
+	];
+
+	if (func.returnType.kind === "table") {
+		for (const col of func.returnType.columns) {
+			if (typesToFilter.includes(col.type.canonical_name)) {
+				console.warn("Skipping function %s: %s", func.name, col.type.canonical_name);
+				return null;
+			}
+		}
+	} else {
+		if (typesToFilter.includes(func.returnType.type.canonical_name)) {
+			console.warn("Skipping function %s: %s", func.name, func.returnType.type.canonical_name);
+			return null;
+		}
+	}
+
+	for (const param of func.parameters) {
+		if (typesToFilter.includes(param.type.canonical_name)) {
+			console.warn("Skipping function %s: %s", func.name, param.type.canonical_name);
+			return null;
+		}
+	}
+
+	return func;
+};
+
 const multifile = async (generator: SchemaGenerator, schemas: Record<string, Schema>, opts: TruePGOpts) => {
-	const { outDir } = opts;
+	const { out } = opts;
 
 	for (const schema of Object.values(schemas)) {
 		console.log("Selected schema '%s':", schema.name);
 
-		const schemaDir = `${outDir}/${schema.name}`;
+		const schemaDir = `${out}/${schema.name}`;
 
 		const supported = ["tables", "enums", "composites", "functions"] as const;
 
-		schema.functions = schema.functions
-			.map(func => {
-				const typesToFilter = [
-					"pg_catalog.trigger",
-					"pg_catalog.event_trigger",
-					"pg_catalog.internal",
-					"pg_catalog.language_handler",
-					"pg_catalog.fdw_handler",
-					"pg_catalog.index_am_handler",
-					"pg_catalog.tsm_handler",
-				];
-
-				if (func.returnType.kind === "table") {
-					for (const col of func.returnType.columns) {
-						if (typesToFilter.includes(col.type.canonical_name)) {
-							console.warn("Skipping function %s: %s", func.name, col.type.canonical_name);
-							return null;
-						}
-					}
-				} else {
-					if (typesToFilter.includes(func.returnType.type.canonical_name)) {
-						console.warn("Skipping function %s: %s", func.name, func.returnType.type.canonical_name);
-						return null;
-					}
-				}
-
-				for (const param of func.parameters) {
-					if (typesToFilter.includes(param.type.canonical_name)) {
-						console.warn("Skipping function %s: %s", func.name, param.type.canonical_name);
-						return null;
-					}
-				}
-
-				return func;
-			})
-			.filter(x => x !== null);
+		schema.functions = schema.functions.map(filter_function).filter(x => x !== null);
 
 		for (const kind of supported) {
 			if (schema[kind].length < 1) continue;
@@ -99,32 +99,24 @@ const multifile = async (generator: SchemaGenerator, schemas: Record<string, Sch
 		}
 
 		const index = generator.schemaIndex(schema);
-		const indexFilename = `${outDir}/${schema.name}/index.ts`;
+		const indexFilename = `${out}/${schema.name}/index.ts`;
 		await writeFile(indexFilename, index);
 		console.log(" Created schema index: %s", indexFilename);
 	}
 
 	const fullIndex = generator.fullIndex(Object.values(schemas));
-	const fullIndexFilename = `${outDir}/index.ts`;
+	const fullIndexFilename = `${out}/index.ts`;
 	await writeFile(fullIndexFilename, fullIndex);
 	console.log("Created full index: %s", fullIndexFilename);
 };
 
 export async function generate(opts: TruePGOpts) {
-	const extractor = new Extractor(opts.connectionString);
-
+	const out = opts.out || "./models";
+	const extractor = new Extractor(opts.uri);
 	const schemas = await extractor.extractSchemas();
-
 	const generator = Kysely(opts);
-
-	console.log("Clearing directory and generating schemas at '%s'", outDir);
-	await rm(outDir, { recursive: true, force: true });
-	await mkdir(outDir, { recursive: true });
-
-	await multifile(generator, schemas, opts);
+	console.log("Clearing directory and generating schemas at '%s'", out);
+	await rm(out, { recursive: true, force: true });
+	await mkdir(out, { recursive: true });
+	await multifile(generator, schemas, { ...opts, out });
 }
-
-const connectionString = "postgres://mkrcal:mkrcal@localhost:5432/mkrcal";
-const outDir = "./out";
-
-generate({ connectionString, outDir });

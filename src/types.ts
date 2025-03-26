@@ -10,8 +10,8 @@ import type {
 } from "pg-extract";
 
 export interface TruePGOpts {
-	connectionString: string;
-	outDir: string;
+	uri: string;
+	out: string;
 	defaultSchema?: string;
 	enumTo?: "union" | "enum";
 }

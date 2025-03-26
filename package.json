@@ -1,14 +1,25 @@
 {
 	"name": "true-pg",
+	"version": "0.0.1",
 	"module": "src/index.ts",
 	"type": "module",
+	"main": "src/index.ts",
+	"bin": {
+		"true-pg": "src/bin.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit"
+	},
 	"devDependencies": {
 		"@types/bun": "latest"
 	},
 	"peerDependencies": {
-		"typescript": "^5"
+		"kysely": "^0.27",
+		"typescript": "^5",
+		"zod": "^3"
 	},
 	"dependencies": {
-		"extract-pg-schema": "../../experiments/extract-pg-schema/"
+		"mri": "^1.2.0",
+		"pg-extract": "github:feathers-studio/pg-extract"
 	}
 }

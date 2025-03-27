@@ -8,7 +8,8 @@
 		"true-pg": "src/bin.ts"
 	},
 	"scripts": {
-		"check": "tsc --noEmit"
+		"check": "tsc --noEmit",
+		"build": "tsc"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"
@@ -20,6 +21,6 @@
 	},
 	"dependencies": {
 		"mri": "^1.2.0",
-		"pg-extract": "github:feathers-studio/pg-extract"
+		"pg-extract": "^0.0.1"
 	}
 }

@@ -49,6 +49,10 @@ const filter_function = (func: FunctionDetails, warnings: string[]) => {
 	return func;
 };
 
+const join = (parts: Iterable<string>, joiner = "\n\n") => Array.from(parts).filter(Boolean).join(joiner);
+
+const write = (filename: string, file: string) => writeFile(filename, file + "\n");
+
 const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: TruePGOpts) => {
 	const { out } = opts;
 
@@ -92,42 +96,44 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 				let file = "";
 
-				if (item.kind === "table") file += gens.map(gen => gen.table(types, item)).join("\n\n");
-				if (item.kind === "composite") file += gens.map(gen => gen.composite(types, item)).join("\n\n");
-				if (item.kind === "enum") file += gens.map(gen => gen.enum(types, item)).join("\n\n");
-				if (item.kind === "function") file += gens.map(gen => gen.function(types, item)).join("\n\n");
+				if (item.kind === "table") file += join(gens.map(gen => gen.table(types, item)));
+				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(types, item)));
+				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(types, item)));
+				if (item.kind === "function") file += join(gens.map(gen => gen.function(types, item)));
 
-				const imports = gens
-					.map(gen => gen.imports(types, { schema: schema.name, kind: item.kind }))
-					.join("\n\n");
+				const imports = join(
+					// only include unique imports
+					new Set(gens.flatMap(gen => gen.imports(types, { schema: schema.name, kind: item.kind }))),
+					"\n",
+				);
 
 				const parts: string[] = [];
 				if (item.kind === "table") parts.push(`import * as K from "kysely";`);
 				parts.push(imports);
 				parts.push(file);
-				file = parts.filter(Boolean).join("\n\n");
+				file = join(parts);
 
-				await writeFile(filename, file);
+				await write(filename, file);
 
 				const end = performance.now();
 				console.log("  %s %s \x1b[32m(%sms)\x1B[0m", index, filename, (end - start).toFixed(2));
 			}
 
-			const kindIndex = gens.map(gen => gen.schemaKindIndex(schema, kind)).join("\n\n");
+			const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind)));
 			const kindIndexFilename = `${schemaDir}/${kind}/index.ts`;
-			await writeFile(kindIndexFilename, kindIndex);
+			await write(kindIndexFilename, kindIndex);
 			console.log('  ✅   Created "%s" %s index: %s\n', schema.name, kind, kindIndexFilename);
 		}
 
-		const index = gens.map(gen => gen.schemaIndex(schema)).join("\n\n");
+		const index = join(gens.map(gen => gen.schemaIndex(schema)));
 		const indexFilename = `${out}/${schema.name}/index.ts`;
-		await writeFile(indexFilename, index);
+		await write(indexFilename, index);
 		console.log(" Created schema index: %s\n", indexFilename);
 	}
 
 	const fullIndex = def_gen.fullIndex(Object.values(schemas));
 	const fullIndexFilename = `${out}/index.ts`;
-	await writeFile(fullIndexFilename, fullIndex);
+	await write(fullIndexFilename, fullIndex);
 	console.log("Created full index: %s", fullIndexFilename);
 	const end = performance.now();
 	console.log("Completed in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));

@@ -15,7 +15,7 @@ const toPascalCase = (str: string) =>
 
 export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
-	const enumTo = opts?.enumTo ?? "enum";
+	const enumTo = opts?.enumTo ?? "union";
 
 	const column = (
 		generator: SchemaGenerator,
@@ -38,7 +38,6 @@ export const Kysely = createGenerator(opts => {
 		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
 		types.push(col.type);
-		if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
 
 		return `\t${out};\n`;
 	};
@@ -87,7 +86,7 @@ export const Kysely = createGenerator(opts => {
 			if (table.comment) out += `/** ${table.comment} */\n`;
 			out += `export interface ${this.formatSchemaType(table)} {\n`;
 			for (const col of table.columns) out += column(this, types, col);
-			out += "}\n";
+			out += "}";
 
 			return out;
 		},
@@ -98,11 +97,11 @@ export const Kysely = createGenerator(opts => {
 			if (en.comment) out += `/** ${en.comment} */\n`;
 
 			if (enumTo === "union") {
-				out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};\n`;
+				out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
 			} else {
 				out += `export enum ${this.formatSchemaType(en)} {\n`;
 				for (const v of en.values) out += `\t"${v}" = "${v}",\n`;
-				out += "}\n";
+				out += "}";
 			}
 
 			return out;
@@ -116,7 +115,7 @@ export const Kysely = createGenerator(opts => {
 
 			const props = type.canonical.attributes.map(c => composite_attribute(this, types, c)).map(t => `\t${t};`);
 			out += props.join("\n");
-			out += "\n}\n";
+			out += "\n}";
 
 			return out;
 		},
@@ -194,13 +193,13 @@ export const Kysely = createGenerator(opts => {
 				out += "[]";
 			}
 
-			out += ";\n}\n";
+			out += ";\n}";
 
 			return out;
 		},
 
 		imports(types, context) {
-			if (types.length === 0) return "";
+			if (types.length === 0) return [];
 
 			const unique_types = types
 				.filter(t => t.schema !== "pg_catalog")
@@ -237,21 +236,19 @@ export const Kysely = createGenerator(opts => {
 				imports.push(`import type { ${name} } from "../${schema}/${kind}s/${name}.ts";`);
 			}
 
-			return imports.join("\n");
+			return imports.filter(Boolean);
 		},
 
 		schemaKindIndex(schema, kind) {
 			const imports = schema[kind];
 			if (imports.length === 0) return "";
 
-			return (
-				imports
-					.map(each => {
-						const name = this.formatSchemaType(each);
-						return `export type { ${name} } from "./${name}.ts";`;
-					})
-					.join("\n") + "\n"
-			);
+			return imports
+				.map(each => {
+					const name = this.formatSchemaType(each);
+					return `export type { ${name} } from "./${name}.ts";`;
+				})
+				.join("\n");
 		},
 
 		schemaIndex(schema) {
@@ -285,7 +282,7 @@ export const Kysely = createGenerator(opts => {
 				out += "\n\t};\n";
 			}
 
-			out += "}\n";
+			out += "}";
 
 			return out;
 		},
@@ -335,7 +332,7 @@ export const Kysely = createGenerator(opts => {
 
 			out += schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n");
 
-			return out + "\n";
+			return out;
 		},
 	};
 });

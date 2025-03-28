@@ -80,7 +80,7 @@ export interface SchemaGenerator {
 		type: FunctionDetails,
 	): string;
 
-	imports(types: CanonicalType[], context: { schema: string; kind: PgType["kind"] }): string;
+	imports(types: CanonicalType[], context: { schema: string; kind: PgType["kind"] }): string[];
 
 	schemaKindIndex(schema: Schema, kind: Exclude<keyof Schema, "name">): string;
 

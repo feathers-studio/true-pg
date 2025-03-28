@@ -8,17 +8,17 @@ const opts = mri<{
 	"config"?: string;
 	"uri"?: string;
 	"out"?: string;
-	"adapters"?: string | string[];
+	"adapter"?: string | string[];
 	"all-adapters"?: boolean;
 }>(args, {
 	boolean: ["help", "all-adapters"],
-	string: ["config", "uri", "out", "adapters"],
+	string: ["config", "uri", "out", "adapter"],
 	alias: {
 		h: "help",
 		c: "config",
 		u: "uri",
 		o: "out",
-		a: "adapters",
+		a: "adapter",
 		A: "all-adapters",
 	},
 });
@@ -37,7 +37,7 @@ if (help) {
 	log("  -h, --help                  Show help");
 	log("  -u, --uri      [uri]        Database URI (Postgres only!)");
 	log("  -o, --out      [path]       Path to output directory");
-	log("  -a, --adapters [adapters]   Output adapters to use (default: 'kysely')");
+	log("  -a, --adapter  [adapter]    Output adapter to use (default: 'kysely')");
 	log("  -A, --all-adapters          Output all adapters");
 	log("  -c, --config   [path]       Path to config file (JSON)");
 	log("                              Defaults to '.truepgrc.json' or '.config/.truepgrc.json'");
@@ -62,20 +62,20 @@ if (!configfile) {
 const config = configfile ? await Bun.file(configfile).json() : {};
 
 if (opts["all-adapters"]) {
-	opts.adapters = Object.keys(adapters);
-	console.log("Enabling all built-in adapters:", opts.adapters);
+	opts.adapter = Object.keys(adapters);
+	console.log("Enabling all built-in adapters:", opts.adapter);
 }
 
-if (!(opts.adapters || config.adapters)) console.warn('No adapters specified, using default: ["kysely"]');
+if (!(opts.adapter || config.adapters)) console.warn('No adapters specified, using default: ["kysely"]');
 
 opts.out ??= "models";
 // allow single adapter or comma-separated list of adapters
-if (typeof opts.adapters === "string") opts.adapters = opts.adapters.split(",");
-opts.adapters ??= ["kysely"];
+if (typeof opts.adapter === "string") opts.adapter = opts.adapter.split(",");
+opts.adapter ??= ["kysely"];
 
 // CLI args take precedence over config file
 config.uri = opts.uri ?? config.uri;
 config.out = opts.out ?? config.out;
-config.adapters = opts.adapters ?? config.adapters;
+config.adapters = opts.adapter ?? config.adapters;
 
 await generate(config);

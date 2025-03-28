@@ -12,6 +12,7 @@ import type {
 export interface TruePGOpts {
 	uri: string;
 	out: string;
+	adapters: string[];
 	defaultSchema?: string;
 	enumTo?: "union" | "enum";
 }
@@ -19,11 +20,15 @@ export interface TruePGOpts {
 export interface CreateGeneratorOpts {
 	defaultSchema?: string;
 	enumTo?: "union" | "enum";
+	warnings: string[];
 }
 
 export interface createGenerator {
 	(opts?: CreateGeneratorOpts): SchemaGenerator;
 }
+
+/* convenience function to create a generator with type inference */
+export const createGenerator = (generatorCreator: createGenerator): createGenerator => generatorCreator;
 
 export interface SchemaGenerator {
 	/**

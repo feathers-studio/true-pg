@@ -1,5 +1,5 @@
 import type { CanonicalType, Schema, TableColumn } from "pg-extract";
-import type { createGenerator, SchemaGenerator } from "../types.ts";
+import { createGenerator, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 
 const isIdentifierInvalid = (str: string) => {
@@ -13,7 +13,7 @@ const toPascalCase = (str: string) =>
 		.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 		.replace(/^([a-z])/, (_, letter) => letter.toUpperCase());
 
-export const Kysely: createGenerator = (opts): SchemaGenerator => {
+export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 	const enumTo = opts?.enumTo ?? "enum";
 
@@ -73,7 +73,7 @@ export const Kysely: createGenerator = (opts): SchemaGenerator => {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) return format;
-				console.warn(
+				opts?.warnings?.push(
 					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
 				);
 				return "unknown";
@@ -338,4 +338,4 @@ export const Kysely: createGenerator = (opts): SchemaGenerator => {
 			return out + "\n";
 		},
 	};
-};
+});

@@ -7,17 +7,15 @@ const isIdentifierInvalid = (str: string) => {
 	return invalid !== null;
 };
 
-const toPascalCase = (str: string) =>
+const to_snake_case = (str: string) =>
 	str
 		.replace(/^[^a-zA-Z]+/, "") // remove leading non-alphabetic characters
-		.replace(/[^a-zA-Z0-9_]+/g, "") // remove non-alphanumeric/underscore characters
-		.replace(" ", "_") // replace spaces with underscores
-		.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()) // capitalize letters after underscores
-		.replace(/^([a-z])/, (_, letter) => letter.toUpperCase()); // capitalize first letter
+		.replace(/[^a-zA-Z0-9]+/g, "_") // replace non-alphanumeric characters with underscores
+		.replace(/([A-Z])/g, "_$1") // insert underscores before uppercase letters
+		.toLowerCase();
 
-export const Kysely = createGenerator(opts => {
+export const Zod = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
-	const enumTo = opts?.enumTo ?? "union";
 
 	const column = (
 		generator: SchemaGenerator,
@@ -26,22 +24,19 @@ export const Kysely = createGenerator(opts => {
 		/** Information about the column */
 		col: TableColumn,
 	) => {
-		let base = generator.formatType(col.type);
-		if (col.type.dimensions > 0) base += "[]".repeat(col.type.dimensions);
-		if (col.isNullable) base += " | null";
-
-		let qualified = base;
-		if (col.generated === "ALWAYS") qualified = `K.GeneratedAlways<${qualified}>`;
-		else if (col.generated === "BY DEFAULT") qualified = `K.Generated<${qualified}>`;
-		else if (col.defaultValue) qualified = `K.Generated<${qualified}>`;
+		// don't create a property for always generated columns
+		if (col.generated === "ALWAYS") return "";
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += col.name;
+		let type = generator.formatType(col.type);
+		if (col.type.dimensions > 0) type += ".array()".repeat(col.type.dimensions);
+		if (col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue) type += `.nullable()`;
 		// TODO: update imports for non-primitive types
-		out += `: ${qualified}`;
+		out += `: ${type}`;
 		types.push(col.type);
 
-		return `\t${out};\n`;
+		return `\t${out},\n`;
 	};
 
 	const composite_attribute = (
@@ -51,22 +46,21 @@ export const Kysely = createGenerator(opts => {
 	) => {
 		let out = attr.name;
 
-		if (attr.isNullable) out += "?";
 		out += `: ${generator.formatType(attr.type)}`;
 		types.push(attr.type);
-		if (attr.type.dimensions > 0) out += "[]".repeat(attr.type.dimensions);
-		if (attr.isNullable) out += " | null";
+		if (attr.type.dimensions > 0) out += ".array()".repeat(attr.type.dimensions);
+		if (attr.isNullable) out += ".nullable()";
 
 		return out;
 	};
 
 	return {
 		formatSchema(name) {
-			return toPascalCase(name) + "Schema";
+			return to_snake_case(name) + "Schema";
 		},
 
 		formatSchemaType(type) {
-			return toPascalCase(type.name);
+			return to_snake_case(type.name);
 		},
 
 		formatType(type) {
@@ -75,20 +69,20 @@ export const Kysely = createGenerator(opts => {
 				const format = builtins[name];
 				if (format) return format;
 				opts?.warnings?.push(
-					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
+					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "z.unknown()".`,
 				);
-				return "unknown";
+				return "z.unknown()";
 			}
-			return toPascalCase(type.name);
+			return to_snake_case(type.name);
 		},
 
 		table(types, table) {
 			let out = "";
 
 			if (table.comment) out += `/** ${table.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(table)} {\n`;
+			out += `export const ${this.formatSchemaType(table)} = z.object({\n`;
 			for (const col of table.columns) out += column(this, types, col);
-			out += "}";
+			out += "});";
 
 			return out;
 		},
@@ -98,13 +92,9 @@ export const Kysely = createGenerator(opts => {
 
 			if (en.comment) out += `/** ${en.comment} */\n`;
 
-			if (enumTo === "union") {
-				out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
-			} else {
-				out += `export enum ${this.formatSchemaType(en)} {\n`;
-				for (const v of en.values) out += `\t"${v}" = "${v}",\n`;
-				out += "}";
-			}
+			out += `export const ${this.formatSchemaType(en)} = z.union([`;
+			out += en.values.map(v => `z.literal("${v}")`).join(", ");
+			out += "]);";
 
 			return out;
 		},
@@ -113,25 +103,21 @@ export const Kysely = createGenerator(opts => {
 			let out = "";
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(type)} {\n`;
+			out += `export const ${this.formatSchemaType(type)} = z.object({\n`;
 
-			const props = type.canonical.attributes.map(c => composite_attribute(this, types, c)).map(t => `\t${t};`);
+			const props = type.canonical.attributes.map(c => composite_attribute(this, types, c)).map(t => `\t${t},`);
 			out += props.join("\n");
-			out += "\n}";
+			out += "\n});";
 
 			return out;
 		},
 
 		function(types, type) {
-			let out = "";
+			let out = "export const ";
+			out += this.formatSchemaType(type);
+			out += " = {\n";
 
-			out += "/**\n";
-			if (type.comment) out += ` * ${type.comment}\n`;
-			out += ` * @volatility ${type.volatility}\n`;
-			out += ` * @parallelSafety ${type.parallelSafety}\n`;
-			out += ` * @isStrict ${type.isStrict}\n`;
-			out += " */\n";
-			out += `export interface ${this.formatSchemaType(type)} {\n\t`;
+			out += `\tparameters: z.tuple([`;
 
 			// Get the input parameters (those that appear in function signature)
 			const inputParams = type.parameters.filter(
@@ -139,62 +125,57 @@ export const Kysely = createGenerator(opts => {
 			);
 
 			if (inputParams.length === 0) {
-				out += "(): ";
-			} else if (inputParams.length === 1) {
-				out += "(";
-				out += inputParams[0]!.name;
-				out += ": ";
-				out += this.formatType(inputParams[0]!.type);
-				types.push(inputParams[0]!.type);
-				if (inputParams[0]!.type.dimensions > 0) out += "[]".repeat(inputParams[0]!.type.dimensions);
-				out += "): ";
-			} else if (inputParams.length > 0) {
-				out += "(\n";
+			} else {
+				out += "\n";
 
 				for (const param of inputParams) {
 					// Handle variadic parameters differently if needed
-					const isVariadic = param.mode === "VARIADIC";
-					const paramName = isVariadic ? `...${param.name}` : param.name;
+					if (param.mode === "VARIADIC") break;
 
-					out += `\t\t${paramName}`;
-					if (param.hasDefault && !isVariadic) out += "?";
 					// TODO: update imports for non-primitive types based on typeInfo.kind
-					out += `: ${this.formatType(param.type)}`;
+					out += "\t\t" + this.formatType(param.type);
 					types.push(param.type);
-					if (param.type.dimensions > 0) out += "[]".repeat(param.type.dimensions);
-					if (!isVariadic) out += ",";
-					out += "\n";
+					if (param.type.dimensions > 0) out += ".array()".repeat(param.type.dimensions);
+					if (param.hasDefault) out += ".nullable()";
+					out += `, // ${param.name}\n`;
 				}
-
-				out += "\t): ";
 			}
 
+			out += "\t]),\n";
+
+			const variadic = type.parameters.find(p => p.mode === "VARIADIC");
+			if (variadic) {
+				out += "\tvariadic: ";
+				out += this.formatType(variadic.type);
+				out += ",\n";
+			} else out += "\tvariadic: undefined,\n";
+
+			out += "\treturnType: ";
+
 			if (type.returnType.kind === "table") {
-				out += "{\n";
+				out += "\t{\n";
 				for (const col of type.returnType.columns) {
 					out += `\t\t${col.name}: `;
 					out += this.formatType(col.type);
 					types.push(col.type);
-					if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
-					out += `;\n`;
+					if (col.type.dimensions > 0) out += ".array()".repeat(col.type.dimensions);
+					out += `,\n`;
 				}
 				out += "\t}";
 			} else {
 				out += this.formatType(type.returnType.type);
 				types.push(type.returnType.type);
-				if (type.returnType.type.dimensions > 0) out += "[]".repeat(type.returnType.type.dimensions);
+				if (type.returnType.type.dimensions > 0) out += ".array()".repeat(type.returnType.type.dimensions);
 			}
 
 			// Add additional array brackets if it returns a set
-			if (type.returnType.isSet) {
-				out += "[]";
-			}
-
-			out += ";\n}";
+			if (type.returnType.isSet) out += ".array()";
+			out += ",\n};";
 
 			return out;
 		},
 
+		// TODO: fix filenames, will follow default adapter
 		imports(types, context) {
 			if (types.length === 0) return [];
 
@@ -212,7 +193,7 @@ export const Kysely = createGenerator(opts => {
 
 			for (const type of current_kind) {
 				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "./${name}.ts";`);
+				imports.push(`import { ${name} } from "./${name}.ts";`);
 			}
 
 			const current_schema = unique_types //
@@ -221,7 +202,7 @@ export const Kysely = createGenerator(opts => {
 			for (const type of current_schema) {
 				const kind = type.kind;
 				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "../${kind}s/${name}.ts";`);
+				imports.push(`import { ${name} } from "../${kind}s/${name}.ts";`);
 			}
 
 			const other_schemas = unique_types.filter(t => t.schema !== context.schema);
@@ -230,12 +211,13 @@ export const Kysely = createGenerator(opts => {
 				const schema = this.formatSchema(type.schema);
 				const kind = type.kind;
 				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "../${schema}/${kind}s/${name}.ts";`);
+				imports.push(`import { ${name} } from "../${schema}/${kind}s/${name}.ts";`);
 			}
 
 			return imports.filter(Boolean);
 		},
 
+		// TODO: fix filenames, will follow default adapter
 		schemaKindIndex(schema, kind) {
 			const imports = schema[kind];
 			if (imports.length === 0) return "";
@@ -243,18 +225,19 @@ export const Kysely = createGenerator(opts => {
 			return imports
 				.map(each => {
 					const name = this.formatSchemaType(each);
-					return `export type { ${name} } from "./${name}.ts";`;
+					return `export { ${name} } from "./${name}.ts";`;
 				})
 				.join("\n");
 		},
 
+		// TODO: fix filenames, will follow default adapter
 		schemaIndex(schema) {
 			const supported_kinds = ["tables", "enums", "composites", "functions"] as const;
 
-			let out = supported_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
+			let out = supported_kinds.map(kind => `import * as ${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
-			out += `export interface ${this.formatSchema(schema.name)} {\n`;
+			out += `export const ${this.formatSchema(schema.name)} = {\n`;
 
 			for (const kind of supported_kinds) {
 				const items = schema[kind];
@@ -284,15 +267,14 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 
+		// TODO: fix filenames, will follow default adapter
 		fullIndex(schemas: Schema[]) {
 			let out = "";
 
-			out += schemas
-				.map(s => `import type { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
-				.join("\n");
+			out += schemas.map(s => `import { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`).join("\n");
 
 			out += "\n\n";
-			out += `export interface Database {\n`;
+			out += `export const Zod = {\n`;
 			out += schemas
 				.map(schema => {
 					// Kysely only wants tables

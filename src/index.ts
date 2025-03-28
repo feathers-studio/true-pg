@@ -2,11 +2,12 @@ import { Extractor, type CanonicalType, type FunctionDetails, type Schema } from
 import { rm, mkdir, writeFile } from "fs/promises";
 import { type TruePGOpts, type createGenerator } from "./types.ts";
 import { Kysely } from "./kysely/index.ts";
+import { Zod } from "./zod/index.ts";
 import { existsSync } from "fs";
 
 export const adapters: Record<string, createGenerator> = {
 	kysely: Kysely,
-	// zod: Zod,
+	zod: Zod,
 };
 
 export * from "./consumer.ts";

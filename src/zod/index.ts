@@ -55,7 +55,7 @@ export const Zod = createGenerator(opts => {
 		let type = generator.formatType(col.type);
 		add(imports, col.type);
 		if (col.type.dimensions > 0) type += ".array()".repeat(col.type.dimensions);
-		if (col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue) type += `.nullable()`;
+		if (col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue) type += `.nullable().optional()`;
 		out += `: ${type}`;
 
 		return `\t${out},\n`;
@@ -66,7 +66,7 @@ export const Zod = createGenerator(opts => {
 		out += `: ${generator.formatType(attr.type)}`;
 		add(imports, attr.type);
 		if (attr.type.dimensions > 0) out += ".array()".repeat(attr.type.dimensions);
-		if (attr.isNullable) out += ".nullable()";
+		if (attr.isNullable) out += ".nullable().optional()";
 
 		return out;
 	};
@@ -152,7 +152,7 @@ export const Zod = createGenerator(opts => {
 					out += "\t\t" + this.formatType(param.type);
 					add(imports, param.type);
 					if (param.type.dimensions > 0) out += ".array()".repeat(param.type.dimensions);
-					if (param.hasDefault) out += ".nullable()";
+					if (param.hasDefault) out += ".nullable().optional()";
 					out += `, // ${param.name}\n`;
 				}
 

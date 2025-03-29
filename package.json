@@ -1,12 +1,15 @@
 {
 	"name": "true-pg",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"type": "module",
 	"module": "lib/index.js",
 	"main": "lib/index.js",
 	"bin": {
 		"true-pg": "lib/bin.js"
 	},
+	"files": [
+		"lib"
+	],
 	"scripts": {
 		"check": "tsc --noEmit",
 		"build": "tsc"

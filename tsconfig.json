@@ -17,6 +17,7 @@
 		"skipLibCheck": true,
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
+		"declaration": true,
 
 		// Some stricter flags (disabled by default)
 		"noUnusedLocals": false,
@@ -24,5 +25,5 @@
 		"noPropertyAccessFromIndexSignature": false,
 		"outDir": "lib"
 	},
-	"include": ["src/**/*.ts", "models/**/*.ts"]
+	"include": ["src/**/*.ts"]
 }

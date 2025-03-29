@@ -1,11 +1,11 @@
 {
 	"name": "true-pg",
-	"version": "0.0.1",
-	"module": "src/index.ts",
+	"version": "0.0.2",
 	"type": "module",
-	"main": "src/index.ts",
+	"module": "lib/index.js",
+	"main": "lib/index.js",
 	"bin": {
-		"true-pg": "src/bin.ts"
+		"true-pg": "lib/bin.js"
 	},
 	"scripts": {
 		"check": "tsc --noEmit",
@@ -21,6 +21,6 @@
 	},
 	"dependencies": {
 		"mri": "^1.2.0",
-		"pg-extract": "^0.0.1"
+		"pg-extract": "^0.0.3"
 	}
 }

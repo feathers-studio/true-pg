@@ -29,9 +29,7 @@ import { cosmiconfig } from "cosmiconfig";
 const explorer = cosmiconfig("truepg");
 const result = opts.config ? await explorer.load(opts.config) : await explorer.search();
 
-const config = result?.config;
-
-console.log(config);
+const config = result?.config ?? {}
 
 const help = opts.help || (!config && !opts.uri);
 

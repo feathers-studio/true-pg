@@ -171,7 +171,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 export async function generate(opts: TruePGOpts, generators?: createGenerator[]) {
 	const out = opts.out || "./models";
-	const extractor = new Extractor(opts.uri);
+	const conn = opts.uri ?? opts.connectionConfig;
+	if (!conn) throw new Error("Either uri or connectionConfig is required. Add either option to your .truepgrc.json.");
+	const extractor = new Extractor(conn);
 	const schemas = await extractor.extractSchemas();
 	generators ??= opts.adapters.map(adapter => {
 		const selected = adapters[adapter];

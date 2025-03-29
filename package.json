@@ -1,6 +1,6 @@
 {
 	"name": "true-pg",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"type": "module",
 	"module": "lib/index.js",
 	"main": "lib/index.js",
@@ -10,9 +10,15 @@
 	"files": [
 		"lib"
 	],
+	"homepage": "https://github.com/feathers-studio/true-pg",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/feathers-studio/true-pg.git"
+	},
 	"scripts": {
 		"check": "tsc --noEmit",
-		"build": "tsc"
+		"build": "tsc",
+		"prepare": "bun run build"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"

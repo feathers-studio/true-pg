@@ -6,6 +6,7 @@ import type {
 	TableDetails,
 	SchemaType,
 	Schema,
+	Extractor,
 } from "pg-extract";
 
 import { dirname, relative } from "node:path";
@@ -217,8 +218,11 @@ export namespace Nodes {
 	}
 }
 
+export type ConnectionConfig = Exclude<ConstructorParameters<typeof Extractor>[0], string | undefined>;
+
 export interface TruePGOpts {
-	uri: string;
+	uri?: string;
+	connectionConfig?: ConnectionConfig;
 	out: string;
 	adapters: string[];
 	defaultSchema?: string;

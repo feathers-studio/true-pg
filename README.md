@@ -51,12 +51,13 @@ Example config file:
 
 ## Configuration Options
 
-| Option          | Description                                              | Default    |
-| --------------- | -------------------------------------------------------- | ---------- |
-| `uri`           | PostgreSQL connection URI                                | Required   |
-| `out`           | Output directory for generated files                     | `"models"` |
-| `adapters`      | Adapters to use (e.g. `kysely`, `zod`)                   | `"kysely"` |
-| `defaultSchema` | Default schema to use (Kysely schema will be unprefixed) | `"public"` |
+| Option             | Description                                              | Default                       |
+| ------------------ | -------------------------------------------------------- | ----------------------------- |
+| `uri`              | PostgreSQL connection URI                                | Required, or connectionConfig |
+| `connectionConfig` | PostgreSQL connection config object                      | Required, or uri              |
+| `out`              | Output directory for generated files                     | `"models"`                    |
+| `adapters`         | Adapters to use (e.g. `kysely`, `zod`)                   | `"kysely"`                    |
+| `defaultSchema`    | Default schema to use (Kysely schema will be unprefixed) | `"public"`                    |
 
 ## Customising Code Generation
 

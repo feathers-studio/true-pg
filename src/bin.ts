@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import mri from "mri";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { generate, adapters } from "./index.ts";
 
 const args = process.argv.slice(2);
@@ -61,7 +61,7 @@ if (!configfile) {
 	}
 }
 
-const config = configfile ? await Bun.file(configfile).json() : {};
+const config = configfile ? JSON.parse(readFileSync(configfile, "utf-8")) : {};
 
 if (opts["all-adapters"]) {
 	opts.adapter = Object.keys(adapters);

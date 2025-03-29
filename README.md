@@ -45,20 +45,18 @@ Example config file:
 	"uri": "postgres://user:password@localhost:5432/database",
 	"out": "src/models",
 	"adapters": ["kysely", "zod"],
-	"defaultSchema": "public",
-	"enumTo": "enum"
+	"defaultSchema": "public"
 }
 ```
 
 ## Configuration Options
 
-| Option          | Description                                                       | Default      |
-| --------------- | ----------------------------------------------------------------- | ------------ |
-| `uri`           | PostgreSQL connection URI                                         | Required     |
-| `out`           | Output directory for generated files                              | `"models"`   |
-| `adapters`      | Adapters to use (e.g. `["kysely", "zod"]`)                        | `["kysely"]` |
-| `defaultSchema` | Default schema to use (Kysely schema will be unprefixed)          | `"public"`   |
-| `enumTo`        | How to represent PostgreSQL enums (as TypeScript unions or enums) | `"enum"`     |
+| Option          | Description                                              | Default    |
+| --------------- | -------------------------------------------------------- | ---------- |
+| `uri`           | PostgreSQL connection URI                                | Required   |
+| `out`           | Output directory for generated files                     | `"models"` |
+| `adapters`      | Adapters to use (e.g. `kysely`, `zod`)                   | `"kysely"` |
+| `defaultSchema` | Default schema to use (Kysely schema will be unprefixed) | `"public"` |
 
 ## Customising Code Generation
 
@@ -77,20 +75,17 @@ const generator = createGenerator(opts => ({
 	formatSchema: name => `${name}Schema`,
 	formatSchemaType: type => `${type}Type`,
 	formatType: type => `${type}Interface`,
-	table: (types, table) => {
+	table: (imports, table) => {
 		// Custom table type generation
 	},
-	enum: (types, en) => {
+	enum: (imports, en) => {
 		// Custom enum type generation
 	},
-	composite: (types, composite) => {
+	composite: (imports, composite) => {
 		// Custom composite type generation
 	},
-	function: (types, func) => {
+	function: (imports, func) => {
 		// Custom function type generation
-	},
-	imports: (types, context) => {
-		// Custom imports generation
 	},
 	schemaKindIndex: (schema, kind) => {
 		// Custom schema kind index generation
@@ -112,6 +107,8 @@ await generate(
 );
 ```
 
+Filenames will be created using the `format*` methods of the FIRST generator passed to `generate` or via the `--adapter` CLI option.
+
 ## Schema Generator Interface
 
 The `SchemaGenerator` interface provides methods to customize code generation:
@@ -125,7 +122,6 @@ The `SchemaGenerator` interface provides methods to customize code generation:
 | `enum(types, en)`               | Generates code for enums                                          |
 | `composite(types, composite)`   | Generates code for composite types                                |
 | `function(types, func)`         | Generates code for functions                                      |
-| `imports(types, context)`       | Generates imports for given types                                 |
 | `schemaKindIndex(schema, kind)` | Generates index for a schema kind (models/public/tables/index.ts) |
 | `schemaIndex(schema)`           | Generates index for a schema (models/public/index.ts)             |
 | `fullIndex(schemas)`            | Generates full index (models/index.ts)                            |

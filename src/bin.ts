@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import mri from "mri";
-import { existsSync, readFileSync } from "fs";
 import { generate, adapters } from "./index.ts";
 
 const args = process.argv.slice(2);

@@ -222,10 +222,14 @@ export type ConnectionConfig = Exclude<ConstructorParameters<typeof Extractor>[0
 
 export interface TruePGOpts {
 	uri?: string;
-	connectionConfig?: ConnectionConfig;
+	config?: ConnectionConfig;
 	out: string;
 	adapters: string[];
 	defaultSchema?: string;
+}
+
+export function config(opts: TruePGOpts) {
+	return opts;
 }
 
 export interface CreateGeneratorOpts {

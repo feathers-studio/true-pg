@@ -4,6 +4,8 @@ import { Nodes, allowed_kind_names, type FolderStructure, type TruePGOpts, type 
 import { existsSync } from "fs";
 import { join } from "./util.ts";
 
+export { config } from "./types.ts";
+
 import { Kysely } from "./kysely/index.ts";
 import { Zod } from "./zod/index.ts";
 
@@ -11,8 +13,6 @@ export const adapters: Record<string, createGenerator> = {
 	kysely: Kysely,
 	zod: Zod,
 };
-
-export * from "./consumer.ts";
 
 const filter_function = (func: FunctionDetails, warnings: string[]) => {
 	const typesToFilter = [
@@ -103,8 +103,11 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		// skip functions that cannot be represented in JavaScript
 		schema.functions = schema.functions.filter(f => filter_function(f, warnings));
 
+		let createIndex = false;
+
 		for (const kind of allowed_kind_names) {
 			if (schema[kind].length < 1) continue;
+			createIndex = true;
 
 			await mkdir(`${schemaDir}/${kind}`, { recursive: true });
 			console.log(" Creating %s:\n", kind);
@@ -149,6 +152,8 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			await write(kindIndexFilename, kindIndex);
 			console.log('  ✅   Created "%s" %s index: %s\n', schema.name, kind, kindIndexFilename);
 		}
+
+		if (!createIndex) continue;
 
 		const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
 		const indexFilename = `${out}/${schema.name}/index.ts`;

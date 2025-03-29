@@ -214,14 +214,16 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 
-		schemaKindIndex(schema, kind) {
+		schemaKindIndex(schema, kind, main_generator) {
+			const generator = main_generator ?? this;
 			const imports = schema[kind];
 			if (imports.length === 0) return "";
 
 			return imports
 				.map(each => {
 					const name = this.formatSchemaType(each);
-					return `export type { ${name} } from "./${name}.ts";`;
+					const file = generator.formatSchemaType(each);
+					return `export type { ${name} } from "./${file}.ts";`;
 				})
 				.join("\n");
 		},

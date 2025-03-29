@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import mri from "mri";
 import { existsSync } from "fs";
 import { generate, adapters } from "./index.ts";

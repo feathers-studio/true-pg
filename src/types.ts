@@ -135,7 +135,7 @@ export namespace Nodes {
 					if (bits.length) import_line += (typeInline ? "" : "type ") + "{ " + bits.join(", ") + " }";
 					if (bits.length && star) import_line += `, `;
 					if (star) import_line += `* as ${star.name}`;
-					if (bits.length || star) import_line += ` from`;
+					if (bits.length || star) import_line += ` from `;
 					import_line += `"${module}";`;
 					imports.push(import_line);
 				}

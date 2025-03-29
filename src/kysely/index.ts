@@ -1,5 +1,5 @@
 import type { CanonicalType, Schema, TableColumn } from "pg-extract";
-import { createGenerator, type SchemaGenerator } from "../types.ts";
+import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 
 const isIdentifierInvalid = (str: string) => {
@@ -17,12 +17,34 @@ const toPascalCase = (str: string) =>
 
 export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
-	const enumTo = opts?.enumTo ?? "union";
+
+	const ky = (imports: Nodes.ImportList, name: string) =>
+		imports.add(
+			new Nodes.ExternalImport({
+				name,
+				module: "kysely",
+				typeOnly: true,
+				star: false,
+			}),
+		);
+
+	const add = (imports: Nodes.ImportList, type: CanonicalType) => {
+		if (type.schema === "pg_catalog") return;
+		imports.add(
+			new Nodes.InternalImport({
+				name: generator.formatType(type),
+				canonical_type: type,
+				typeOnly: true,
+				star: false,
+			}),
+		);
+	};
 
 	const column = (
+		/** "this" */
 		generator: SchemaGenerator,
 		/** @out Append used types to this array */
-		types: CanonicalType[],
+		imports: Nodes.ImportList,
 		/** Information about the column */
 		col: TableColumn,
 	) => {
@@ -31,36 +53,43 @@ export const Kysely = createGenerator(opts => {
 		if (col.isNullable) base += " | null";
 
 		let qualified = base;
-		if (col.generated === "ALWAYS") qualified = `K.GeneratedAlways<${qualified}>`;
-		else if (col.generated === "BY DEFAULT") qualified = `K.Generated<${qualified}>`;
-		else if (col.defaultValue) qualified = `K.Generated<${qualified}>`;
+		if (col.generated === "ALWAYS") {
+			qualified = `GeneratedAlways<${qualified}>`;
+			ky(imports, "GeneratedAlways");
+		} else if (col.generated === "BY DEFAULT") {
+			qualified = `Generated<${qualified}>`;
+			ky(imports, "Generated");
+		} else if (col.defaultValue) {
+			qualified = `Generated<${qualified}>`;
+			ky(imports, "Generated");
+		}
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += col.name;
 		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
-		types.push(col.type);
+		add(imports, col.type);
 
 		return `\t${out};\n`;
 	};
 
 	const composite_attribute = (
 		generator: SchemaGenerator,
-		types: CanonicalType[],
+		imports: Nodes.ImportList,
 		attr: CanonicalType.CompositeAttribute,
 	) => {
 		let out = attr.name;
 
 		if (attr.isNullable) out += "?";
 		out += `: ${generator.formatType(attr.type)}`;
-		types.push(attr.type);
+		add(imports, attr.type);
 		if (attr.type.dimensions > 0) out += "[]".repeat(attr.type.dimensions);
 		if (attr.isNullable) out += " | null";
 
 		return out;
 	};
 
-	return {
+	const generator: SchemaGenerator = {
 		formatSchema(name) {
 			return toPascalCase(name) + "Schema";
 		},
@@ -82,47 +111,38 @@ export const Kysely = createGenerator(opts => {
 			return toPascalCase(type.name);
 		},
 
-		table(types, table) {
+		table(imports, table) {
 			let out = "";
 
 			if (table.comment) out += `/** ${table.comment} */\n`;
 			out += `export interface ${this.formatSchemaType(table)} {\n`;
-			for (const col of table.columns) out += column(this, types, col);
+			for (const col of table.columns) out += column(this, imports, col);
 			out += "}";
 
 			return out;
 		},
 
-		enum(types, en) {
+		enum(imports, en) {
 			let out = "";
-
 			if (en.comment) out += `/** ${en.comment} */\n`;
-
-			if (enumTo === "union") {
-				out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
-			} else {
-				out += `export enum ${this.formatSchemaType(en)} {\n`;
-				for (const v of en.values) out += `\t"${v}" = "${v}",\n`;
-				out += "}";
-			}
-
+			out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
 			return out;
 		},
 
-		composite(types, type) {
+		composite(imports, type) {
 			let out = "";
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
 			out += `export interface ${this.formatSchemaType(type)} {\n`;
 
-			const props = type.canonical.attributes.map(c => composite_attribute(this, types, c)).map(t => `\t${t};`);
+			const props = type.canonical.attributes.map(c => composite_attribute(this, imports, c)).map(t => `\t${t};`);
 			out += props.join("\n");
 			out += "\n}";
 
 			return out;
 		},
 
-		function(types, type) {
+		function(imports, type) {
 			let out = "";
 
 			out += "/**\n";
@@ -145,7 +165,7 @@ export const Kysely = createGenerator(opts => {
 				out += inputParams[0]!.name;
 				out += ": ";
 				out += this.formatType(inputParams[0]!.type);
-				types.push(inputParams[0]!.type);
+				add(imports, inputParams[0]!.type);
 				if (inputParams[0]!.type.dimensions > 0) out += "[]".repeat(inputParams[0]!.type.dimensions);
 				out += "): ";
 			} else if (inputParams.length > 0) {
@@ -158,9 +178,8 @@ export const Kysely = createGenerator(opts => {
 
 					out += `\t\t${paramName}`;
 					if (param.hasDefault && !isVariadic) out += "?";
-					// TODO: update imports for non-primitive types based on typeInfo.kind
 					out += `: ${this.formatType(param.type)}`;
-					types.push(param.type);
+					add(imports, param.type);
 					if (param.type.dimensions > 0) out += "[]".repeat(param.type.dimensions);
 					if (!isVariadic) out += ",";
 					out += "\n";
@@ -174,14 +193,14 @@ export const Kysely = createGenerator(opts => {
 				for (const col of type.returnType.columns) {
 					out += `\t\t${col.name}: `;
 					out += this.formatType(col.type);
-					types.push(col.type);
+					add(imports, col.type);
 					if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
 					out += `;\n`;
 				}
 				out += "\t}";
 			} else {
 				out += this.formatType(type.returnType.type);
-				types.push(type.returnType.type);
+				add(imports, type.returnType.type);
 				if (type.returnType.type.dimensions > 0) out += "[]".repeat(type.returnType.type.dimensions);
 			}
 
@@ -193,47 +212,6 @@ export const Kysely = createGenerator(opts => {
 			out += ";\n}";
 
 			return out;
-		},
-
-		imports(types, context) {
-			if (types.length === 0) return [];
-
-			const unique_types = types
-				.filter(t => t.schema !== "pg_catalog")
-				.filter((t, i, arr) => {
-					return arr.findIndex(t2 => t2.canonical_name === t.canonical_name) === i;
-				})
-				.map(t => ({ ...t, formatted: this.formatType(t) }));
-
-			const imports: string[] = [];
-
-			const current_kind = unique_types //
-				.filter(t => t.schema === context.schema && t.kind === context.kind);
-
-			for (const type of current_kind) {
-				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "./${name}.ts";`);
-			}
-
-			const current_schema = unique_types //
-				.filter(t => t.schema === context.schema && t.kind !== context.kind);
-
-			for (const type of current_schema) {
-				const kind = type.kind;
-				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "../${kind}s/${name}.ts";`);
-			}
-
-			const other_schemas = unique_types.filter(t => t.schema !== context.schema);
-
-			for (const type of other_schemas) {
-				const schema = this.formatSchema(type.schema);
-				const kind = type.kind;
-				const name = this.formatType(type);
-				imports.push(`import type { ${name} } from "../${schema}/${kind}s/${name}.ts";`);
-			}
-
-			return imports.filter(Boolean);
 		},
 
 		schemaKindIndex(schema, kind) {
@@ -249,14 +227,12 @@ export const Kysely = createGenerator(opts => {
 		},
 
 		schemaIndex(schema) {
-			const supported_kinds = ["tables", "enums", "composites", "functions"] as const;
-
-			let out = supported_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
+			let out = allowed_kind_names.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export interface ${this.formatSchema(schema.name)} {\n`;
 
-			for (const kind of supported_kinds) {
+			for (const kind of allowed_kind_names) {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
@@ -332,4 +308,6 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 	};
+
+	return generator;
 });

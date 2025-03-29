@@ -1,9 +1,11 @@
-import { Extractor, type CanonicalType, type FunctionDetails, type Schema } from "pg-extract";
+import { Extractor, type FunctionDetails, type Schema } from "pg-extract";
 import { rm, mkdir, writeFile } from "fs/promises";
-import { type TruePGOpts, type createGenerator } from "./types.ts";
+import { Nodes, allowed_kind_names, type FolderStructure, type TruePGOpts, type createGenerator } from "./types.ts";
+import { existsSync } from "fs";
+import { join } from "./util.ts";
+
 import { Kysely } from "./kysely/index.ts";
 import { Zod } from "./zod/index.ts";
-import { existsSync } from "fs";
 
 export const adapters: Record<string, createGenerator> = {
 	kysely: Kysely,
@@ -50,8 +52,6 @@ const filter_function = (func: FunctionDetails, warnings: string[]) => {
 	return func;
 };
 
-const join = (parts: Iterable<string>, joiner = "\n\n") => Array.from(parts).filter(Boolean).join(joiner);
-
 const write = (filename: string, file: string) => writeFile(filename, file + "\n");
 
 const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: TruePGOpts) => {
@@ -61,6 +61,38 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 	const gens = generators.map(g => g({ ...opts, warnings }));
 	const def_gen = gens[0]!;
 
+	const files: FolderStructure = {
+		name: out,
+		type: "root",
+		children: Object.fromEntries(
+			Object.values(schemas).map(schema => [
+				schema.name,
+				{
+					name: schema.name,
+					type: "schema",
+					children: Object.fromEntries(
+						allowed_kind_names.map(kind => [
+							kind,
+							{
+								kind: kind,
+								type: "kind",
+								children: Object.fromEntries(
+									schema[kind].map(item => [
+										item.name,
+										{
+											name: def_gen.formatSchemaType(item),
+											type: "type",
+										},
+									]),
+								),
+							},
+						]),
+					),
+				},
+			]),
+		),
+	};
+
 	const start = performance.now();
 
 	for (const schema of Object.values(schemas)) {
@@ -68,12 +100,10 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 		const schemaDir = `${out}/${schema.name}`;
 
-		const supported = ["tables", "enums", "composites", "functions"] as const;
-
 		// skip functions that cannot be represented in JavaScript
 		schema.functions = schema.functions.filter(f => filter_function(f, warnings));
 
-		for (const kind of supported) {
+		for (const kind of allowed_kind_names) {
 			if (schema[kind].length < 1) continue;
 
 			await mkdir(`${schemaDir}/${kind}`, { recursive: true });
@@ -93,24 +123,18 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				}
 
 				const start = performance.now();
-				const types: CanonicalType[] = [];
 
 				let file = "";
 
-				if (item.kind === "table") file += join(gens.map(gen => gen.table(types, item)));
-				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(types, item)));
-				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(types, item)));
-				if (item.kind === "function") file += join(gens.map(gen => gen.function(types, item)));
+				const imports = new Nodes.ImportList([]);
 
-				const imports = join(
-					// only include unique imports
-					new Set(gens.flatMap(gen => gen.imports(types, { schema: schema.name, kind: item.kind }))),
-					"\n",
-				);
+				if (item.kind === "table") file += join(gens.map(gen => gen.table(imports, item)));
+				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(imports, item)));
+				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(imports, item)));
+				if (item.kind === "function") file += join(gens.map(gen => gen.function(imports, item)));
 
 				const parts: string[] = [];
-				if (item.kind === "table") parts.push(`import * as K from "kysely";`);
-				parts.push(imports);
+				parts.push(imports.stringify(filename, files));
 				parts.push(file);
 				file = join(parts);
 
@@ -120,13 +144,13 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				console.log("  %s %s \x1b[32m(%sms)\x1B[0m", index, filename, (end - start).toFixed(2));
 			}
 
-			const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind)));
+			const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind, def_gen)));
 			const kindIndexFilename = `${schemaDir}/${kind}/index.ts`;
 			await write(kindIndexFilename, kindIndex);
 			console.log('  ✅   Created "%s" %s index: %s\n', schema.name, kind, kindIndexFilename);
 		}
 
-		const index = join(gens.map(gen => gen.schemaIndex(schema)));
+		const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
 		const indexFilename = `${out}/${schema.name}/index.ts`;
 		await write(indexFilename, index);
 		console.log(" Created schema index: %s\n", indexFilename);

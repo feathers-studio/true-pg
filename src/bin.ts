@@ -25,7 +25,16 @@ const opts = mri<{
 	},
 });
 
-const help = opts.help || (!opts.config && !opts.uri);
+import { cosmiconfig } from "cosmiconfig";
+
+const explorer = cosmiconfig("truepg");
+const result = opts.config ? await explorer.load(opts.config) : await explorer.search();
+
+const config = result?.config;
+
+console.log(config);
+
+const help = opts.help || (!config && !opts.uri);
 
 if (help) {
 	// if help is triggered unintentionally, it's a user error
@@ -49,19 +58,6 @@ if (help) {
 	if (opts.help) process.exit(0);
 	else process.exit(1);
 }
-
-let configfile = opts.config;
-if (!configfile) {
-	const candidates = [".truepgrc.json", ".config/.truepgrc.json"];
-	for (const candidate of candidates) {
-		if (await existsSync(candidate)) {
-			configfile = candidate;
-			break;
-		}
-	}
-}
-
-const config = configfile ? JSON.parse(readFileSync(configfile, "utf-8")) : {};
 
 if (opts["all-adapters"]) {
 	opts.adapter = Object.keys(adapters);

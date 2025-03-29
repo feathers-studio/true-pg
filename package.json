@@ -29,6 +29,7 @@
 		"zod": "^3"
 	},
 	"dependencies": {
+		"cosmiconfig": "^9.0.0",
 		"mri": "^1.2.0",
 		"pg-extract": "^0.0.3"
 	}

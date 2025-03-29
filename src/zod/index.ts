@@ -1,6 +1,7 @@
 import type { CanonicalType, Schema, TableColumn } from "pg-extract";
-import { createGenerator, type SchemaGenerator } from "../types.ts";
+import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
+import { join } from "../util.ts";
 
 const isIdentifierInvalid = (str: string) => {
 	const invalid = str.match(/[^a-zA-Z0-9_]/);
@@ -14,13 +15,35 @@ const to_snake_case = (str: string) =>
 		.replace(/([A-Z])/g, "_$1") // insert underscores before uppercase letters
 		.toLowerCase();
 
+// TODO: create an insert and update zod interface for each type
 export const Zod = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 
+	const zod = (imports: Nodes.ImportList, name?: string) =>
+		imports.add(
+			new Nodes.ExternalImport({
+				name: name ?? "z",
+				module: "zod",
+				typeOnly: false,
+				star: !name,
+			}),
+		);
+
+	const add = (imports: Nodes.ImportList, type: CanonicalType) => {
+		if (type.schema === "pg_catalog") zod(imports, "z");
+		else
+			imports.add(
+				new Nodes.InternalImport({
+					name: generator.formatType(type),
+					canonical_type: type,
+					typeOnly: false,
+					star: false,
+				}),
+			);
+	};
+
 	const column = (
-		generator: SchemaGenerator,
-		/** @out Append used types to this array */
-		types: CanonicalType[],
+		imports: Nodes.ImportList,
 		/** Information about the column */
 		col: TableColumn,
 	) => {
@@ -30,33 +53,27 @@ export const Zod = createGenerator(opts => {
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += col.name;
 		let type = generator.formatType(col.type);
+		add(imports, col.type);
 		if (col.type.dimensions > 0) type += ".array()".repeat(col.type.dimensions);
 		if (col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue) type += `.nullable()`;
-		// TODO: update imports for non-primitive types
 		out += `: ${type}`;
-		types.push(col.type);
 
 		return `\t${out},\n`;
 	};
 
-	const composite_attribute = (
-		generator: SchemaGenerator,
-		types: CanonicalType[],
-		attr: CanonicalType.CompositeAttribute,
-	) => {
+	const composite_attribute = (imports: Nodes.ImportList, attr: CanonicalType.CompositeAttribute) => {
 		let out = attr.name;
-
 		out += `: ${generator.formatType(attr.type)}`;
-		types.push(attr.type);
+		add(imports, attr.type);
 		if (attr.type.dimensions > 0) out += ".array()".repeat(attr.type.dimensions);
 		if (attr.isNullable) out += ".nullable()";
 
 		return out;
 	};
 
-	return {
+	const generator: SchemaGenerator = {
 		formatSchema(name) {
-			return to_snake_case(name) + "Schema";
+			return to_snake_case(name) + "_validators";
 		},
 
 		formatSchemaType(type) {
@@ -76,43 +93,46 @@ export const Zod = createGenerator(opts => {
 			return to_snake_case(type.name);
 		},
 
-		table(types, table) {
+		table(imports, table) {
 			let out = "";
 
 			if (table.comment) out += `/** ${table.comment} */\n`;
 			out += `export const ${this.formatSchemaType(table)} = z.object({\n`;
-			for (const col of table.columns) out += column(this, types, col);
+			zod(imports, "z");
+			for (const col of table.columns) out += column(imports, col);
 			out += "});";
 
 			return out;
 		},
 
-		enum(types, en) {
+		enum(imports, en) {
 			let out = "";
 
 			if (en.comment) out += `/** ${en.comment} */\n`;
 
-			out += `export const ${this.formatSchemaType(en)} = z.union([`;
-			out += en.values.map(v => `z.literal("${v}")`).join(", ");
-			out += "]);";
+			out += `export const ${this.formatSchemaType(en)} = z.union([\n`;
+			out += en.values.map(v => `\tz.literal("${v}")`).join(",\n");
+			out += "\n]);";
+
+			zod(imports, "z");
 
 			return out;
 		},
 
-		composite(types, type) {
+		composite(imports, type) {
 			let out = "";
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
 			out += `export const ${this.formatSchemaType(type)} = z.object({\n`;
 
-			const props = type.canonical.attributes.map(c => composite_attribute(this, types, c)).map(t => `\t${t},`);
+			const props = type.canonical.attributes.map(c => composite_attribute(imports, c)).map(t => `\t${t},`);
 			out += props.join("\n");
 			out += "\n});";
 
 			return out;
 		},
 
-		function(types, type) {
+		function(imports, type) {
 			let out = "export const ";
 			out += this.formatSchemaType(type);
 			out += " = {\n";
@@ -120,51 +140,49 @@ export const Zod = createGenerator(opts => {
 			out += `\tparameters: z.tuple([`;
 
 			// Get the input parameters (those that appear in function signature)
-			const inputParams = type.parameters.filter(
-				p => p.mode === "IN" || p.mode === "INOUT" || p.mode === "VARIADIC",
-			);
+			const inputParams = type.parameters.filter(p => p.mode === "IN" || p.mode === "INOUT");
 
 			if (inputParams.length === 0) {
+				out += "])";
 			} else {
 				out += "\n";
 
 				for (const param of inputParams) {
-					// Handle variadic parameters differently if needed
-					if (param.mode === "VARIADIC") break;
-
 					// TODO: update imports for non-primitive types based on typeInfo.kind
 					out += "\t\t" + this.formatType(param.type);
-					types.push(param.type);
+					add(imports, param.type);
 					if (param.type.dimensions > 0) out += ".array()".repeat(param.type.dimensions);
 					if (param.hasDefault) out += ".nullable()";
 					out += `, // ${param.name}\n`;
 				}
-			}
 
-			out += "\t]),\n";
+				out += "\t])";
+			}
 
 			const variadic = type.parameters.find(p => p.mode === "VARIADIC");
 			if (variadic) {
-				out += "\tvariadic: ";
+				out += ".rest(";
 				out += this.formatType(variadic.type);
-				out += ",\n";
-			} else out += "\tvariadic: undefined,\n";
+				// reduce by 1 because it's already a rest parameter
+				if (variadic.type.dimensions > 1) out += ".array()".repeat(variadic.type.dimensions - 1);
+				out += ")" + ", // " + variadic.name + "\n";
+			} else out += ",\n";
 
 			out += "\treturnType: ";
 
 			if (type.returnType.kind === "table") {
-				out += "\t{\n";
+				out += "z.object({\n";
 				for (const col of type.returnType.columns) {
 					out += `\t\t${col.name}: `;
 					out += this.formatType(col.type);
-					types.push(col.type);
+					add(imports, col.type);
 					if (col.type.dimensions > 0) out += ".array()".repeat(col.type.dimensions);
 					out += `,\n`;
 				}
-				out += "\t}";
+				out += "\t})";
 			} else {
 				out += this.formatType(type.returnType.type);
-				types.push(type.returnType.type);
+				add(imports, type.returnType.type);
 				if (type.returnType.type.dimensions > 0) out += ".array()".repeat(type.returnType.type.dimensions);
 			}
 
@@ -175,71 +193,27 @@ export const Zod = createGenerator(opts => {
 			return out;
 		},
 
-		// TODO: fix filenames, will follow default adapter
-		imports(types, context) {
-			if (types.length === 0) return [];
-
-			const unique_types = types
-				.filter(t => t.schema !== "pg_catalog")
-				.filter((t, i, arr) => {
-					return arr.findIndex(t2 => t2.canonical_name === t.canonical_name) === i;
-				})
-				.map(t => ({ ...t, formatted: this.formatType(t) }));
-
-			const imports: string[] = [];
-
-			const current_kind = unique_types //
-				.filter(t => t.schema === context.schema && t.kind === context.kind);
-
-			for (const type of current_kind) {
-				const name = this.formatType(type);
-				imports.push(`import { ${name} } from "./${name}.ts";`);
-			}
-
-			const current_schema = unique_types //
-				.filter(t => t.schema === context.schema && t.kind !== context.kind);
-
-			for (const type of current_schema) {
-				const kind = type.kind;
-				const name = this.formatType(type);
-				imports.push(`import { ${name} } from "../${kind}s/${name}.ts";`);
-			}
-
-			const other_schemas = unique_types.filter(t => t.schema !== context.schema);
-
-			for (const type of other_schemas) {
-				const schema = this.formatSchema(type.schema);
-				const kind = type.kind;
-				const name = this.formatType(type);
-				imports.push(`import { ${name} } from "../${schema}/${kind}s/${name}.ts";`);
-			}
-
-			return imports.filter(Boolean);
-		},
-
-		// TODO: fix filenames, will follow default adapter
-		schemaKindIndex(schema, kind) {
+		schemaKindIndex(schema, kind, main_generator) {
 			const imports = schema[kind];
 			if (imports.length === 0) return "";
+			const generator = main_generator ?? this;
 
 			return imports
 				.map(each => {
 					const name = this.formatSchemaType(each);
-					return `export { ${name} } from "./${name}.ts";`;
+					const file = generator.formatSchemaType(each);
+					return `export { ${name} } from "./${file}.ts";`;
 				})
 				.join("\n");
 		},
 
-		// TODO: fix filenames, will follow default adapter
-		schemaIndex(schema) {
-			const supported_kinds = ["tables", "enums", "composites", "functions"] as const;
-
-			let out = supported_kinds.map(kind => `import * as ${kind} from "./${kind}/index.ts";`).join("\n");
+		schemaIndex(schema, main_generator) {
+			let out = allowed_kind_names.map(kind => `import * as zod_${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export const ${this.formatSchema(schema.name)} = {\n`;
 
-			for (const kind of supported_kinds) {
+			for (const kind of allowed_kind_names) {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
@@ -256,10 +230,10 @@ export const Zod = createGenerator(opts => {
 					.map(t => {
 						let name = t.name;
 						if (isIdentifierInvalid(name)) name = `"${name}"`;
-						return `\t\t${name}: ${t.kind}s.${t.formatted};`;
+						return `\t\t${name}: zod_${t.kind}s.${t.formatted},`;
 					})
 					.join("\n");
-				out += "\n\t};\n";
+				out += "\n\t},\n";
 			}
 
 			out += "}";
@@ -267,45 +241,53 @@ export const Zod = createGenerator(opts => {
 			return out;
 		},
 
-		// TODO: fix filenames, will follow default adapter
-		fullIndex(schemas: Schema[]) {
+		fullIndex(schemas: Schema[], main_generator) {
+			const generator = main_generator ?? this;
+
 			let out = "";
 
-			out += schemas.map(s => `import { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`).join("\n");
+			out += schemas
+				.map(s => `import { ${generator.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
+				.join("\n");
 
 			out += "\n\n";
-			out += `export const Zod = {\n`;
-			out += schemas
-				.map(schema => {
-					// Kysely only wants tables
-					const tables = schema.tables;
+			out += `export const Validators = {\n`;
+			out += join(
+				schemas.map(schema => {
+					const schema_validators = join(
+						allowed_kind_names.map(kind => {
+							const current = schema[kind];
 
-					let out = "";
+							const seen = new Set<string>();
+							const formatted = current
+								.map(each => {
+									const formatted = generator.formatSchemaType(each);
+									// skip clashing names
+									if (seen.has(formatted)) return;
+									seen.add(formatted);
+									return { ...each, formatted };
+								})
+								.filter(x => x !== undefined);
 
-					const seen = new Set<string>();
-					const formatted = tables
-						.map(each => {
-							const formatted = this.formatSchemaType(each);
-							// skip clashing names
-							if (seen.has(formatted)) return;
-							seen.add(formatted);
-							return { ...each, formatted };
-						})
-						.filter(x => x !== undefined);
+							if (!formatted.length) return "";
 
-					if (out.length) out += "\n\n";
-					out += formatted
-						.map(t => {
-							const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
-							let qualified = prefix + t.name;
-							if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
-							return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
-						})
-						.join("\n");
-
-					return out;
-				})
-				.join("");
+							let out = "";
+							out += "\t// " + kind + "\n";
+							out += join(
+								formatted.map(t => {
+									const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
+									let qualified = prefix + t.name;
+									if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
+									return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"],`;
+								}),
+								"\n",
+							);
+							return out;
+						}),
+					);
+					return `\t/* -- ${schema.name} --*/\n\n` + schema_validators || "\t-- no validators\n\n";
+				}),
+			);
 
 			out += "\n}\n\n";
 
@@ -314,4 +296,6 @@ export const Zod = createGenerator(opts => {
 			return out;
 		},
 	};
+
+	return generator;
 });

@@ -156,7 +156,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		console.log(" Created schema index: %s\n", indexFilename);
 	}
 
-	const fullIndex = def_gen.fullIndex(Object.values(schemas));
+	const fullIndex = join(gens.map(gen => gen.fullIndex(Object.values(schemas))));
 	const fullIndexFilename = `${out}/index.ts`;
 	await write(fullIndexFilename, fullIndex);
 	console.log("Created full index: %s", fullIndexFilename);

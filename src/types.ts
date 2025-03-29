@@ -9,6 +9,8 @@ import type {
 	Extractor,
 } from "pg-extract";
 
+// import type { ClientConfig, Pool, PoolConfig } from "pg";
+
 import { dirname, relative } from "node:path";
 import { join } from "./util.ts";
 
@@ -223,6 +225,7 @@ export type ConnectionConfig = Exclude<ConstructorParameters<typeof Extractor>[0
 export interface TruePGOpts {
 	uri?: string;
 	config?: ConnectionConfig;
+	// pg?: Pool;
 	out: string;
 	adapters: string[];
 	defaultSchema?: string;

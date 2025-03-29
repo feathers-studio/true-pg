@@ -6,6 +6,7 @@ import { join } from "./util.ts";
 
 export { config } from "./types.ts";
 
+// import { Pool } from "pg";
 import { Kysely } from "./kysely/index.ts";
 import { Zod } from "./zod/index.ts";
 
@@ -176,9 +177,27 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 export async function generate(opts: TruePGOpts, generators?: createGenerator[]) {
 	const out = opts.out || "./models";
-	const conn = opts.uri ?? opts.connectionConfig;
-	if (!conn) throw new Error("Either uri or connectionConfig is required. Add either option to your .truepgrc.json.");
-	const extractor = new Extractor(conn);
+
+	// let pg;
+	// if (opts.pg) pg = opts.pg;
+	// else if (opts.uri) pg = new Pool({ connectionString: opts.uri });
+	// else if (opts.config) pg = new Pool(opts.config);
+	// else {
+	// 	console.error(
+	// 		"One of these options are required in your config file: pg, uri, config. See documentation for more information.",
+	// 	);
+	// 	process.exit(1);
+	// }
+
+	const config = opts.uri ?? opts.config;
+	if (!config) {
+		console.error(
+			"One of these options are required in your config file: uri, config. See documentation for more information.",
+		);
+		process.exit(1);
+	}
+
+	const extractor = new Extractor(config);
 	const schemas = await extractor.extractSchemas();
 	generators ??= opts.adapters.map(adapter => {
 		const selected = adapters[adapter];

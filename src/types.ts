@@ -220,12 +220,12 @@ export namespace Nodes {
 	}
 }
 
-export type ConnectionConfig = Exclude<ConstructorParameters<typeof Extractor>[0], string | undefined>;
+export type ExtractorConfig = Exclude<ConstructorParameters<typeof Extractor>[0], string | undefined>;
 
 export interface TruePGOpts {
-	uri?: string;
-	config?: ConnectionConfig;
-	// pg?: Pool;
+	pg?: ExtractorConfig["pg"];
+	uri?: ExtractorConfig["uri"];
+	config?: ExtractorConfig["config"];
 	out: string;
 	adapters: string[];
 	defaultSchema?: string;

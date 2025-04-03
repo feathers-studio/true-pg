@@ -6,7 +6,6 @@ import { join } from "./util.ts";
 
 export { config } from "./types.ts";
 
-// import { Pool } from "pg";
 import { Kysely } from "./kysely/index.ts";
 import { Zod } from "./zod/index.ts";
 
@@ -178,27 +177,18 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 export async function generate(opts: TruePGOpts, generators?: createGenerator[]) {
 	const out = opts.out || "./models";
 
-	// let pg;
-	// if (opts.pg) pg = opts.pg;
-	// else if (opts.uri) pg = new Pool({ connectionString: opts.uri });
-	// else if (opts.config) pg = new Pool(opts.config);
-	// else {
-	// 	console.error(
-	// 		"One of these options are required in your config file: pg, uri, config. See documentation for more information.",
-	// 	);
-	// 	process.exit(1);
-	// }
-
-	const config = opts.uri ?? opts.config;
-	if (!config) {
+	if (!(opts.uri || opts.config || opts.pg)) {
 		console.error(
 			"One of these options are required in your config file: uri, config. See documentation for more information.",
 		);
 		process.exit(1);
 	}
 
-	const extractor = new Extractor(config);
+	const extractor = new Extractor(opts);
 	const schemas = await extractor.extractSchemas();
+
+	console.info("Adapters enabled: %s\n", opts.adapters.join(", "));
+
 	generators ??= opts.adapters.map(adapter => {
 		const selected = adapters[adapter];
 		if (!selected) throw new Error(`Requested adapter ${adapter} not found`);

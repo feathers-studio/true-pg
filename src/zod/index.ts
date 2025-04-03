@@ -289,7 +289,7 @@ export const Zod = createGenerator(opts => {
 				}),
 			);
 
-			out += "\n}\n\n";
+			out += "\n};\n\n";
 
 			out += schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n");
 

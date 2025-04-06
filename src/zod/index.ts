@@ -208,12 +208,13 @@ export const Zod = createGenerator(opts => {
 		},
 
 		schemaIndex(schema, main_generator) {
-			let out = allowed_kind_names.map(kind => `import * as zod_${kind} from "./${kind}/index.ts";`).join("\n");
+			const actual_kinds = allowed_kind_names.filter(kind => schema[kind].length);
+			let out = actual_kinds.map(kind => `import * as zod_${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export const ${this.formatSchema(schema.name)} = {\n`;
 
-			for (const kind of allowed_kind_names) {
+			for (const kind of actual_kinds) {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
@@ -244,56 +245,62 @@ export const Zod = createGenerator(opts => {
 		fullIndex(schemas: Schema[], main_generator) {
 			const generator = main_generator ?? this;
 
-			let out = "";
+			const parts: string[] = [];
 
-			out += schemas
-				.map(s => `import { ${generator.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
-				.join("\n");
-
-			out += "\n\n";
-			out += `export const Validators = {\n`;
-			out += join(
-				schemas.map(schema => {
-					const schema_validators = join(
-						allowed_kind_names.map(kind => {
-							const current = schema[kind];
-
-							const seen = new Set<string>();
-							const formatted = current
-								.map(each => {
-									const formatted = generator.formatSchemaType(each);
-									// skip clashing names
-									if (seen.has(formatted)) return;
-									seen.add(formatted);
-									return { ...each, formatted };
-								})
-								.filter(x => x !== undefined);
-
-							if (!formatted.length) return "";
-
-							let out = "";
-							out += "\t// " + kind + "\n";
-							out += join(
-								formatted.map(t => {
-									const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
-									let qualified = prefix + t.name;
-									if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
-									return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"],`;
-								}),
-								"\n",
-							);
-							return out;
-						}),
-					);
-					return `\t/* -- ${schema.name} --*/\n\n` + schema_validators || "\t-- no validators\n\n";
-				}),
+			parts.push(
+				schemas
+					.map(s => `import { ${generator.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
+					.join("\n"),
 			);
 
-			out += "\n};\n\n";
+			{
+				let validator = `export const Validators = {\n`;
+				validator += join(
+					schemas.map(schema => {
+						const schema_validators = join(
+							allowed_kind_names.map(kind => {
+								const current = schema[kind];
 
-			out += schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n");
+								const seen = new Set<string>();
+								const formatted = current
+									.map(each => {
+										const formatted = generator.formatSchemaType(each);
+										// skip clashing names
+										if (seen.has(formatted)) return;
+										seen.add(formatted);
+										return { ...each, formatted };
+									})
+									.filter(x => x !== undefined);
 
-			return out;
+								if (!formatted.length) return "";
+
+								let out = "";
+								out += "\t// " + kind + "\n";
+								out += join(
+									formatted.map(t => {
+										const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
+										let qualified = prefix + t.name;
+										if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
+										return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${
+											t.name
+										}"],`;
+									}),
+									"\n",
+								);
+								return out;
+							}),
+						);
+						return `\t/* -- ${schema.name} --*/\n\n` + schema_validators || "\t-- no validators\n\n";
+					}),
+				);
+
+				validator += "\n};";
+				parts.push(validator);
+			}
+
+			parts.push(schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n"));
+
+			return join(parts);
 		},
 	};
 

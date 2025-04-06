@@ -1,6 +1,7 @@
 import type { CanonicalType, Schema, TableColumn } from "pg-extract";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
+import { join } from "../util.ts";
 
 const isIdentifierInvalid = (str: string) => {
 	const invalid = str.match(/[^a-zA-Z0-9_]/);
@@ -229,12 +230,13 @@ export const Kysely = createGenerator(opts => {
 		},
 
 		schemaIndex(schema) {
-			let out = allowed_kind_names.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
+			const actual_kinds = allowed_kind_names.filter(kind => schema[kind].length);
+			let out = actual_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export interface ${this.formatSchema(schema.name)} {\n`;
 
-			for (const kind of allowed_kind_names) {
+			for (const kind of actual_kinds) {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
@@ -263,51 +265,57 @@ export const Kysely = createGenerator(opts => {
 		},
 
 		fullIndex(schemas: Schema[]) {
-			let out = "";
+			// let out = "";
 
-			out += schemas
-				.map(s => `import type { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
-				.join("\n");
+			const parts: string[] = [];
 
-			out += "\n\n";
-			out += `export interface Database {\n`;
-			out += schemas
-				.map(schema => {
-					// Kysely only wants tables
-					const tables = schema.tables;
+			parts.push(
+				schemas
+					.map(s => `import type { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
+					.join("\n"),
+			);
 
-					let out = "";
+			{
+				let iface = `export interface Database {\n`;
+				iface += schemas
+					.map(schema => {
+						// Kysely only wants tables
+						const tables = schema.tables;
 
-					const seen = new Set<string>();
-					const formatted = tables
-						.map(each => {
-							const formatted = this.formatSchemaType(each);
-							// skip clashing names
-							if (seen.has(formatted)) return;
-							seen.add(formatted);
-							return { ...each, formatted };
-						})
-						.filter(x => x !== undefined);
+						let out = "";
 
-					if (out.length) out += "\n\n";
-					out += formatted
-						.map(t => {
-							const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
-							let qualified = prefix + t.name;
-							if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
-							return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
-						})
-						.join("\n");
+						const seen = new Set<string>();
+						const formatted = tables
+							.map(each => {
+								const formatted = this.formatSchemaType(each);
+								// skip clashing names
+								if (seen.has(formatted)) return;
+								seen.add(formatted);
+								return { ...each, formatted };
+							})
+							.filter(x => x !== undefined);
 
-					return out;
-				})
-				.join("");
+						if (out.length) out += "\n\n";
+						out += formatted
+							.map(t => {
+								const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
+								let qualified = prefix + t.name;
+								if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
+								return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
+							})
+							.join("\n");
 
-			out += "\n}\n\n";
+						return out;
+					})
+					.join("");
 
-			out += schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n");
+				iface += "\n}";
+				parts.push(iface);
+			}
 
-			return out;
+			parts.push(schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n"));
+
+			return join(parts);
 		},
 	};
 

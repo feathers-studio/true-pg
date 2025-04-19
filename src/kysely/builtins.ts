@@ -35,4 +35,6 @@ export const builtins: Record<string, string> = {
 	"pg_catalog.daterange": "string",
 	"pg_catalog.record": "Record<string, unknown>",
 	"pg_catalog.void": "void",
+	"pg_catalog.bytea": "string",
+	"pg_catalog.vector": "number[]",
 };

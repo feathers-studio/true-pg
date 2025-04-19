@@ -1,4 +1,5 @@
-import { Extractor, type FunctionDetails, type Schema } from "pg-extract";
+import { Extractor } from "./extractor/index.ts";
+import type { FunctionDetails, Schema } from "./extractor/index.ts";
 import { rm, mkdir, writeFile } from "fs/promises";
 import { Nodes, allowed_kind_names, type FolderStructure, type TruePGOpts, type createGenerator } from "./types.ts";
 import { existsSync } from "fs";

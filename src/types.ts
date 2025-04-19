@@ -1,15 +1,13 @@
 import type {
+	Extractor,
 	CanonicalType,
-	CompositeTypeDetails,
-	EnumDetails,
-	FunctionDetails,
 	TableDetails,
+	EnumDetails,
+	CompositeTypeDetails,
+	FunctionDetails,
 	SchemaType,
 	Schema,
-	Extractor,
-} from "pg-extract";
-
-// import type { ClientConfig, Pool, PoolConfig } from "pg";
+} from "./extractor/index.ts";
 
 import { dirname, relative } from "node:path";
 import { join } from "./util.ts";

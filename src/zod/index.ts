@@ -1,4 +1,4 @@
-import type { CanonicalType, Schema, TableColumn } from "pg-extract";
+import type { CanonicalType, Schema, TableColumn } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 import { join } from "../util.ts";

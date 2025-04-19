@@ -45,21 +45,36 @@ const parallelSafetyMap = {
 type FunctionParallelSafety = (typeof parallelSafetyMap)[keyof typeof parallelSafetyMap];
 
 export enum FunctionReturnTypeKind {
-	Table = "table",
 	Regular = "regular",
+	InlineTable = "inline_table",
+	ExistingTable = "table",
 }
 
-type FunctionReturnType =
-	| {
-			kind: FunctionReturnTypeKind.Table;
-			columns: { name: string; type: CanonicalType }[];
-			isSet: boolean;
-	  }
-	| {
-			kind: FunctionReturnTypeKind.Regular;
-			type: CanonicalType;
-			isSet: boolean;
-	  };
+export namespace FunctionReturnType {
+	export type Regular = {
+		kind: FunctionReturnTypeKind.Regular;
+		type: CanonicalType;
+		isSet: boolean;
+	};
+
+	export type ImplicitTable = {
+		kind: FunctionReturnTypeKind.InlineTable;
+		columns: { name: string; type: CanonicalType }[];
+		isSet: true;
+	};
+
+	export type ExistingTable = {
+		kind: FunctionReturnTypeKind.ExistingTable;
+		schema: string;
+		name: string;
+		isSet: boolean;
+	};
+}
+
+export type FunctionReturnType =
+	| FunctionReturnType.Regular
+	| FunctionReturnType.ImplicitTable
+	| FunctionReturnType.ExistingTable;
 
 export interface FunctionDetails extends PgType<"function"> {
 	parameters: FunctionParameter[];
@@ -80,7 +95,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 	const query = `
 		SELECT
 			p.proname as name,
-			ns.nspname || '.' || t.typname AS return_type,
+			format_type(p.prorettype, null) as return_type_string,
 			l.lanname AS language,
 			p.prosrc AS definition,
 			p.proisstrict AS is_strict,
@@ -101,27 +116,32 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			p.proargdefaults as arg_defaults,
 			pg_get_function_arguments(p.oid) AS arg_list,
 			pg_get_function_identity_arguments(p.oid) AS identity_args,
-			pg_get_function_result(p.oid) as full_return_type,
-			(t.typelem != 0) AS returns_array,
-			COALESCE(t.typndims, 0) AS return_dimensions,
-			t.typelem
+			pg_get_function_result(p.oid) as declared_return_type,
+			ret_typ.typtype as return_type_kind_code,
+			ret_typ_ns.nspname as return_type_schema,
+			ret_typ.typname as return_type_name,
+			ret_typ.typrelid as return_type_relation_oid,
+			ret_rel.relkind as return_type_relation_kind
 		FROM pg_proc p
 		LEFT JOIN pg_namespace n ON n.oid = p.pronamespace
 		LEFT JOIN pg_description d ON d.objoid = p.oid
 		LEFT JOIN pg_language l ON l.oid = p.prolang
-		LEFT JOIN pg_type t ON t.oid = p.prorettype
-		LEFT JOIN pg_namespace ns ON t.typnamespace = ns.oid
+		LEFT JOIN pg_type ret_typ ON ret_typ.oid = p.prorettype
+		LEFT JOIN pg_namespace ret_typ_ns ON ret_typ.typnamespace = ret_typ_ns.oid
+		LEFT JOIN pg_class ret_rel ON ret_rel.oid = ret_typ.typrelid
 		WHERE n.nspname = $1 AND p.proname = $2
 	`;
 
 	const rows = await db.query<
 		{
 			name: string;
+			return_type_string: string;
 			language: string;
 			definition: string;
 			is_strict: boolean;
 			is_security_definer: boolean;
 			is_leak_proof: boolean;
+			returns_set: boolean;
 			volatility: "i" | "s" | "v";
 			parallel_safety: "s" | "r" | "u";
 			estimated_cost: number;
@@ -135,12 +155,12 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			arg_defaults: string | null;
 			arg_list: string;
 			identity_args: string;
-			return_type: string;
-			full_return_type: string;
-			returns_array: boolean;
-			returns_set: boolean;
-			return_dimensions: number;
-			typelem: number;
+			declared_return_type: string;
+			return_type_kind_code: string | null;
+			return_type_schema: string | null;
+			return_type_name: string | null;
+			return_type_relation_oid: string | null;
+			return_type_relation_kind: "r" | "v" | "m" | "c" | string | null;
 		},
 		[string, string]
 	>(query, [pgType.schemaName, pgType.name]);
@@ -152,36 +172,83 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			const argModes = row.arg_modes?.map(mode => parameterModeMap[mode]) ?? [];
 			const canonical_arg_types = row.arg_types ? await canonicaliseTypes(db, row.arg_types) : [];
 
-			const firstOutParamIndex = row.arg_modes?.findIndex(mode => mode === "o") ?? -1;
-
 			let returnType: FunctionReturnType;
 
-			const tableMatch = (row.full_return_type as string).match(/TABLE\((.*)\)/i);
-			if (tableMatch) {
-				const columnDefs = tableMatch[1]!.split(",").map(col => {
-					const [name, type] = col.trim().split(/\s+/);
+			const tableMatch = row.declared_return_type.match(/^TABLE\((.*)\)$/i);
+
+			if (tableMatch && tableMatch[1]) {
+				const columnDefs = tableMatch[1].split(",").map(colDef => {
+					const parts = colDef.trim().match(/^(\S+)\s+(.*)$/);
+					if (!parts || parts.length < 3) {
+						console.warn(
+							`Could not parse column definition: "${colDef}" in function ${pgType.schemaName}.${row.name}`,
+						);
+						return { name: "unknown", type: "unknown" };
+					}
+					const name = parts[1]!;
+					const typeMatch = parts[2]!.match(/^(\S+?)(?:\s*\(|\s*$)/);
+					const type = typeMatch ? typeMatch[1]! : parts[2]!.trim();
+
 					return { name, type };
 				});
 
-				const column_types = await canonicaliseTypes(
-					db,
-					columnDefs.map(col => col.type!),
-				);
+				const columnTypes = columnDefs.map(col => col.type);
+				const canonicalColumnTypes = await canonicaliseTypes(db, columnTypes);
 
 				returnType = {
-					kind: FunctionReturnTypeKind.Table,
+					kind: FunctionReturnTypeKind.InlineTable,
 					columns: columnDefs.map((col, i) => ({
-						name: col.name!,
-						type: column_types[i]!,
+						name: col.name,
+						type: canonicalColumnTypes[i]!,
 					})),
-					isSet: row.returns_set,
+					isSet: true,
 				};
 			} else {
-				returnType = {
-					kind: FunctionReturnTypeKind.Regular,
-					type: (await canonicaliseTypes(db, [row.return_type]))[0]!,
-					isSet: row.returns_set,
-				};
+				// "c" = composite type
+				if (row.return_type_kind_code === "c") {
+					if (
+						// "r" = table
+						row.return_type_relation_kind === "r" ||
+						// "v" = view
+						row.return_type_relation_kind === "v" ||
+						// "m" = materialized view
+						row.return_type_relation_kind === "m"
+					) {
+						returnType = {
+							kind: FunctionReturnTypeKind.ExistingTable,
+							schema: row.return_type_schema!,
+							name: row.return_type_name!,
+							isSet: row.returns_set,
+						};
+					} else if (
+						// "c" = composite type
+						row.return_type_relation_kind === "c"
+					) {
+						const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+						returnType = {
+							kind: FunctionReturnTypeKind.Regular,
+							type: canonicalReturnType,
+							isSet: row.returns_set,
+						};
+					} else {
+						console.warn(
+							`Composite return type '${row.return_type_string}' has unexpected relkind '${row.return_type_relation_kind}' for function ${pgType.schemaName}.${row.name}`,
+						);
+						const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+						returnType = {
+							kind: FunctionReturnTypeKind.Regular,
+							type: canonicalReturnType,
+							isSet: row.returns_set,
+						};
+					}
+				} else {
+					const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+					returnType = {
+						kind: FunctionReturnTypeKind.Regular,
+						type: canonicalReturnType,
+						isSet: row.returns_set,
+					};
+				}
 			}
 
 			// Filter to include IN, INOUT, and VARIADIC parameters as input parameters

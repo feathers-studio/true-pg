@@ -15,6 +15,8 @@ import { canonicaliseTypes, CanonicalType } from "./canonicalise.ts";
 export { CanonicalType };
 export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails };
 export type { TableColumn } from "./kinds/table.ts";
+export type { FunctionParameter, FunctionReturnType } from "./kinds/function.ts";
+export { FunctionReturnTypeKind } from "./kinds/function.ts";
 
 interface DetailsMap {
 	enum: EnumDetails;

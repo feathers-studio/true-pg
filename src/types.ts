@@ -9,7 +9,7 @@ import type {
 	Schema,
 } from "./extractor/index.ts";
 
-import { dirname, relative } from "node:path";
+import { dirname, relative } from "node:path/posix";
 import { join } from "./util.ts";
 
 // To be updated when we add support for other kinds

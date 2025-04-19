@@ -4,7 +4,7 @@ node_modules
 # output
 lib
 out
-models
+staging/
 dist
 *.tgz
 
@@ -28,9 +28,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .eslintcache
 .cache
 *.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
 
 # Finder (MacOS) folder config
 .DS_Store

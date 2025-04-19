@@ -1,4 +1,10 @@
-import type { CanonicalType, Schema, TableColumn } from "../extractor/index.ts";
+import {
+	FunctionReturnTypeKind,
+	type CanonicalType,
+	type FunctionReturnType,
+	type Schema,
+	type TableColumn,
+} from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 import { join } from "../util.ts";
@@ -29,7 +35,7 @@ export const Zod = createGenerator(opts => {
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: CanonicalType) => {
+	const add = (imports: Nodes.ImportList, type: CanonicalType | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") zod(imports, "z");
 		else
 			imports.add(
@@ -81,12 +87,14 @@ export const Zod = createGenerator(opts => {
 		},
 
 		formatType(type) {
-			if (type.schema === "pg_catalog") {
+			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
+				return to_snake_case(type.name);
+			} else if (type.schema === "pg_catalog") {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) return format;
 				opts?.warnings?.push(
-					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "z.unknown()".`,
+					`(zod) Unknown builtin type: ${name}. Pass customBuiltinMap to map this type. Defaulting to "z.unknown()".`,
 				);
 				return "z.unknown()";
 			}
@@ -170,7 +178,7 @@ export const Zod = createGenerator(opts => {
 
 			out += "\treturnType: ";
 
-			if (type.returnType.kind === "table") {
+			if (type.returnType.kind === FunctionReturnTypeKind.InlineTable) {
 				out += "z.object({\n";
 				for (const col of type.returnType.columns) {
 					out += `\t\t${col.name}: `;
@@ -180,6 +188,9 @@ export const Zod = createGenerator(opts => {
 					out += `,\n`;
 				}
 				out += "\t})";
+			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
+				out += this.formatType(type.returnType);
+				add(imports, type.returnType);
 			} else {
 				out += this.formatType(type.returnType.type);
 				add(imports, type.returnType.type);

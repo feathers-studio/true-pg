@@ -1,4 +1,10 @@
-import type { CanonicalType, Schema, TableColumn } from "../extractor/index.ts";
+import {
+	FunctionReturnTypeKind,
+	type CanonicalType,
+	type FunctionReturnType,
+	type Schema,
+	type TableColumn,
+} from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
 import { join } from "../util.ts";
@@ -29,7 +35,7 @@ export const Kysely = createGenerator(opts => {
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: CanonicalType) => {
+	const add = (imports: Nodes.ImportList, type: CanonicalType | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") return;
 		imports.add(
 			new Nodes.InternalImport({
@@ -100,12 +106,14 @@ export const Kysely = createGenerator(opts => {
 		},
 
 		formatType(type) {
-			if (type.schema === "pg_catalog") {
+			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
+				return toPascalCase(type.name);
+			} else if (type.schema === "pg_catalog") {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) return format;
 				opts?.warnings?.push(
-					`Unknown builtin type: ${name}! Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
+					`(kysely) Unknown builtin type: ${name}. Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
 				);
 				return "unknown";
 			}
@@ -189,7 +197,7 @@ export const Kysely = createGenerator(opts => {
 				out += "\t): ";
 			}
 
-			if (type.returnType.kind === "table") {
+			if (type.returnType.kind === FunctionReturnTypeKind.InlineTable) {
 				out += "{\n";
 				for (const col of type.returnType.columns) {
 					out += `\t\t${col.name}: `;
@@ -199,6 +207,9 @@ export const Kysely = createGenerator(opts => {
 					out += `;\n`;
 				}
 				out += "\t}";
+			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
+				out += this.formatType(type.returnType);
+				add(imports, type.returnType);
 			} else {
 				out += this.formatType(type.returnType.type);
 				add(imports, type.returnType.type);

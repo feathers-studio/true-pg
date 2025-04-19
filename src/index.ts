@@ -1,7 +1,7 @@
-import { Extractor } from "./extractor/index.ts";
+import { Extractor, FunctionReturnTypeKind } from "./extractor/index.ts";
 import type { FunctionDetails, Schema } from "./extractor/index.ts";
 import { rm, mkdir, writeFile } from "fs/promises";
-import { Nodes, allowed_kind_names, type FolderStructure, type TruePGOpts, type createGenerator } from "./types.ts";
+import { Nodes, allowed_kind_names, type FolderStructure, type TruePGConfig, type createGenerator } from "./types.ts";
 import { existsSync } from "fs";
 import { join } from "./util.ts";
 
@@ -29,12 +29,17 @@ const filter_function = (func: FunctionDetails, warnings: string[]) => {
 	const warn = (type: string) =>
 		warnings.push(`Skipping function ${func.name}: cannot represent ${type} (safe to ignore)`);
 
-	if (func.returnType.kind === "table") {
+	if (func.returnType.kind === FunctionReturnTypeKind.InlineTable) {
 		for (const col of func.returnType.columns) {
 			if (typesToFilter.includes(col.type.canonical_name)) {
 				warn(col.type.canonical_name);
 				return false;
 			}
+		}
+	} else if (func.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
+		if (typesToFilter.includes(func.returnType.schema + "." + func.returnType.name)) {
+			warn(func.returnType.schema + "." + func.returnType.name);
+			return false;
 		}
 	} else {
 		if (typesToFilter.includes(func.returnType.type.canonical_name)) {
@@ -55,7 +60,7 @@ const filter_function = (func: FunctionDetails, warnings: string[]) => {
 
 const write = (filename: string, file: string) => writeFile(filename, file + "\n");
 
-const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: TruePGOpts) => {
+const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: TruePGConfig) => {
 	const { out } = opts;
 
 	const warnings: string[] = [];
@@ -175,7 +180,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 	}
 };
 
-export async function generate(opts: TruePGOpts, generators?: createGenerator[]) {
+export async function generate(opts: TruePGConfig, generators?: createGenerator[]) {
 	const out = opts.out || "./models";
 
 	if (!(opts.uri || opts.config || opts.pg)) {

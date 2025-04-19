@@ -1,12 +1,13 @@
-import type {
-	Extractor,
+import {
 	CanonicalType,
-	TableDetails,
-	EnumDetails,
-	CompositeTypeDetails,
-	FunctionDetails,
-	SchemaType,
-	Schema,
+	type Extractor,
+	type TableDetails,
+	type EnumDetails,
+	type CompositeTypeDetails,
+	type FunctionDetails,
+	type SchemaType,
+	type Schema,
+	type FunctionReturnType,
 } from "./extractor/index.ts";
 
 import { dirname, relative } from "node:path/posix";
@@ -66,7 +67,7 @@ export namespace Nodes {
 		// what to import
 		name: string;
 		// underlying type that is being imported
-		canonical_type: CanonicalType;
+		canonical_type: CanonicalType | FunctionReturnType.ExistingTable;
 		// use `type` syntax?
 		typeOnly: boolean;
 		// use `* as` syntax?
@@ -75,7 +76,12 @@ export namespace Nodes {
 		// this is an internal import
 		external: false;
 
-		constructor(args: { name: string; canonical_type: CanonicalType; typeOnly: boolean; star: boolean }) {
+		constructor(args: {
+			name: string;
+			canonical_type: CanonicalType | FunctionReturnType.ExistingTable;
+			typeOnly: boolean;
+			star: boolean;
+		}) {
 			this.name = args.name;
 			this.canonical_type = args.canonical_type;
 			this.star = args.star;
@@ -162,6 +168,11 @@ export namespace Nodes {
 							}) === index
 						);
 					})
+					.filter(
+						imp =>
+							imp.canonical_type.kind === CanonicalType.TypeKind.Base ||
+							allowed_kind_names.includes(`${imp.canonical_type.kind}s` as any),
+					)
 					.map(imp => {
 						const t = imp.canonical_type;
 						const schema = files.children[t.schema]!;
@@ -220,7 +231,7 @@ export namespace Nodes {
 
 export type ExtractorConfig = Exclude<ConstructorParameters<typeof Extractor>[0], string | undefined>;
 
-export interface TruePGOpts {
+export interface TruePGConfig {
 	pg?: ExtractorConfig["pg"];
 	uri?: ExtractorConfig["uri"];
 	config?: ExtractorConfig["config"];
@@ -229,7 +240,7 @@ export interface TruePGOpts {
 	defaultSchema?: string;
 }
 
-export function config(opts: TruePGOpts) {
+export function config(opts: TruePGConfig) {
 	return opts;
 }
 
@@ -265,7 +276,7 @@ export interface SchemaGenerator {
 	 * This is useful if you want to use a different name for a type in the generated code.
 	 * Example: "users" -> "UsersTable"
 	 */
-	formatType(type: CanonicalType): string;
+	formatType(type: CanonicalType | FunctionReturnType.ExistingTable): string;
 
 	table(
 		/** @out Append used types to this array */

@@ -12,7 +12,8 @@ import type { Kind, PgType } from "./pgtype.ts";
 
 import { canonicaliseTypes, CanonicalType } from "./canonicalise.ts";
 
-export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails, CanonicalType };
+export { CanonicalType };
+export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails };
 export type { TableColumn } from "./kinds/table.ts";
 
 interface DetailsMap {
@@ -187,7 +188,13 @@ export class Extractor {
 
 		const pgTypes = await fetchTypes(db, schemaNames);
 
-		const typesToExtract = options?.typeFilter ? pgTypes.filter(element => options.typeFilter!(element)) : pgTypes;
+		const filtered = options?.typeFilter ? pgTypes.filter(element => options.typeFilter!(element)) : pgTypes;
+
+		const typesToExtract = filtered.filter(x => x.kind);
+
+		const skipped = filtered.filter(x => !x.kind).map(x => x.name);
+		console.warn("Skipping types of unsupported kinds:", skipped.join(", "));
+		console.warn("This is a bug!");
 
 		options?.onProgressStart?.(typesToExtract.length);
 

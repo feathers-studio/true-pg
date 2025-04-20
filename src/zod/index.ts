@@ -140,6 +140,13 @@ export const Zod = createGenerator(opts => {
 			return out;
 		},
 
+		domain(imports, type) {
+			let out = "";
+			out += `export const ${this.formatSchemaType(type)} = ${this.formatType(type.canonical.domain_base_type)};`;
+			zod(imports, "z");
+			return out;
+		},
+
 		function(imports, type) {
 			let out = "export const ";
 			out += this.formatSchemaType(type);

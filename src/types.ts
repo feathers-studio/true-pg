@@ -12,9 +12,10 @@ import {
 
 import { dirname, relative } from "node:path/posix";
 import { join } from "./util.ts";
+import type { DomainDetails } from "./extractor/kinds/domain.ts";
 
 // To be updated when we add support for other kinds
-export const allowed_kind_names = ["tables", "enums", "composites", "functions"] as const;
+export const allowed_kind_names = ["tables", "enums", "composites", "functions", "domains"] as const;
 export type allowed_kind_names = (typeof allowed_kind_names)[number];
 
 export interface FolderStructure {
@@ -297,6 +298,13 @@ export interface SchemaGenerator {
 		imports: Nodes.ImportList,
 		/** Information about the composite type */
 		type: CompositeTypeDetails,
+	): string;
+
+	domain(
+		/** @out Append used types to this array */
+		imports: Nodes.ImportList,
+		/** Information about the domain */
+		type: DomainDetails,
 	): string;
 
 	function(

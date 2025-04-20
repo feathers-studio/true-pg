@@ -151,6 +151,12 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 
+		domain(imports, type) {
+			let out = "";
+			out += `export type ${this.formatSchemaType(type)} = ${this.formatType(type.canonical.domain_base_type)};`;
+			return out;
+		},
+
 		function(imports, type) {
 			let out = "";
 

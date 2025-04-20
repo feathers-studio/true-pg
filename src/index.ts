@@ -138,8 +138,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				const imports = new Nodes.ImportList([]);
 
 				if (item.kind === "table") file += join(gens.map(gen => gen.table(imports, item)));
-				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(imports, item)));
 				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(imports, item)));
+				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(imports, item)));
+				if (item.kind === "domain") file += join(gens.map(gen => gen.domain(imports, item)));
 				if (item.kind === "function") file += join(gens.map(gen => gen.function(imports, item)));
 
 				const parts: string[] = [];

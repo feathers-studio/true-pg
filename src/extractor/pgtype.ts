@@ -1,5 +1,5 @@
 export const typeKindMap = {
-	// d: "domain",
+	d: "domain",
 	e: "enum",
 	// r: "range",
 

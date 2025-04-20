@@ -6,6 +6,7 @@ import extractTable, { type TableDetails } from "./kinds/table.ts";
 import extractEnum, { type EnumDetails } from "./kinds/enum.ts";
 import extractComposite, { type CompositeTypeDetails } from "./kinds/composite.ts";
 import extractFunction, { type FunctionDetails } from "./kinds/function.ts";
+import extractDomain, { type DomainDetails } from "./kinds/domain.ts";
 
 import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
@@ -23,6 +24,7 @@ interface DetailsMap {
 	table: TableDetails;
 	composite: CompositeTypeDetails;
 	function: FunctionDetails;
+	domain: DomainDetails;
 }
 
 /**
@@ -35,15 +37,17 @@ export type Schema = {
 	tables: TableDetails[];
 	composites: CompositeTypeDetails[];
 	functions: FunctionDetails[];
+	domains: DomainDetails[];
 };
 
-export type SchemaType = EnumDetails | TableDetails | CompositeTypeDetails | FunctionDetails;
+export type SchemaType = EnumDetails | TableDetails | CompositeTypeDetails | FunctionDetails | DomainDetails;
 
 const emptySchema: Omit<Schema, "name"> = {
 	enums: [],
 	tables: [],
 	composites: [],
 	functions: [],
+	domains: [],
 };
 
 type Populator<K extends Kind> = (pg: DbAdapter, pgType: PgType<K>) => Promise<DetailsMap[K] | DetailsMap[K][]>;
@@ -53,6 +57,7 @@ const populatorMap: { [K in Kind]: Populator<K> } = {
 	table: extractTable,
 	composite: extractComposite,
 	function: extractFunction,
+	domain: extractDomain,
 };
 
 /**

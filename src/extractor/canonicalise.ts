@@ -62,11 +62,7 @@ export namespace CanonicalType {
 
 	export interface Domain extends Abstract {
 		kind: TypeKind.Domain;
-		domain_base_type: {
-			canonical_name: string;
-			schema: string;
-			name: string;
-		} | null;
+		domain_base_type: CanonicalType;
 	}
 
 	export interface Range extends Abstract {
@@ -218,9 +214,6 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 	domain_base_types AS (
 		SELECT DISTINCT ON (original_type)
 			d.original_type,
-			t.oid AS final_base_oid,
-			n.nspname AS base_schema,
-			t.typname AS base_name,
 			format('%s.%s', n.nspname, t.typname) AS base_canonical_name
 		FROM (
 			-- Get the max level for each original type
@@ -253,13 +246,8 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 		'modifiers', b.modifiers,
 		'enum_values', e.values,
 		'attributes', c.attributes,
-		'domain_base_type', CASE 
-			WHEN b.type_kind_code = 'd' THEN
-				jsonb_build_object(
-					'canonical_name', d.base_canonical_name,
-					'schema', d.base_schema,
-					'name', d.base_name
-				)
+		'domain_base_type', CASE
+			WHEN b.type_kind_code = 'd' THEN d.base_canonical_name
 			ELSE NULL
 		END,
 		'range_subtype', CASE
@@ -278,7 +266,7 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 
 	interface Resolved {
 		type_info:
-			| Exclude<CanonicalType, CanonicalType.Composite>
+			| Exclude<CanonicalType, CanonicalType.Composite | CanonicalType.Domain>
 			| (Omit<CanonicalType.Composite, "attributes"> & {
 					kind: CanonicalType.TypeKind;
 					attributes: {
@@ -292,6 +280,10 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 						isIdentity: boolean;
 						generated: "ALWAYS" | "NEVER" | "BY DEFAULT";
 					}[];
+			  })
+			| (Omit<CanonicalType.Domain, "domain_base_type"> & {
+					kind: CanonicalType.TypeKind;
+					domain_base_type: string;
 			  });
 	}
 
@@ -327,6 +319,16 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 						kind: CanonicalType.TypeKind.Composite,
 						attributes,
 					}) satisfies CanonicalType.Composite;
+				}
+
+				if (each.kind === CanonicalType.TypeKind.Domain) {
+					const canonical = await canonicaliseTypes(db, [each.domain_base_type]);
+
+					return removeNulls({
+						...each,
+						kind: CanonicalType.TypeKind.Domain,
+						domain_base_type: canonical[0]!,
+					}) satisfies CanonicalType.Domain;
 				}
 
 				return removeNulls(each) satisfies CanonicalType;

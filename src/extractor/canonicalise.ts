@@ -67,7 +67,7 @@ export namespace CanonicalType {
 
 	export interface Range extends Abstract {
 		kind: TypeKind.Range;
-		range_subtype: string | null;
+		range_subtype: CanonicalType;
 	}
 
 	export interface Pseudo extends Abstract {
@@ -229,10 +229,11 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 	range_subtypes AS (
 		SELECT
 			b.type_name,
-			r.rngsubtype AS subtype_oid,
-			format_type(r.rngsubtype, NULL) AS subtype_name
+			format('%s.%s', n.nspname, t.typname) AS subtype_canonical_name
 		FROM base_type_info b
 		JOIN pg_range r ON b.type_oid = r.rngtypid
+		JOIN pg_type t ON t.oid = r.rngsubtype  -- Join to get subtype details
+		JOIN pg_namespace n ON n.oid = t.typnamespace -- Join to get subtype schema
 		WHERE b.type_kind_code = 'r'
 	)
 	-- Final result as JSON
@@ -251,7 +252,7 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 			ELSE NULL
 		END,
 		'range_subtype', CASE
-			WHEN b.type_kind_code = 'r' THEN r.subtype_name
+			WHEN b.type_kind_code = 'r' THEN r.subtype_canonical_name
 			ELSE NULL
 		END
 	) AS type_info,
@@ -266,7 +267,7 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 
 	interface Resolved {
 		type_info:
-			| Exclude<CanonicalType, CanonicalType.Composite | CanonicalType.Domain>
+			| Exclude<CanonicalType, CanonicalType.Composite | CanonicalType.Domain | CanonicalType.Range>
 			| (Omit<CanonicalType.Composite, "attributes"> & {
 					kind: CanonicalType.TypeKind;
 					attributes: {
@@ -284,6 +285,10 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 			| (Omit<CanonicalType.Domain, "domain_base_type"> & {
 					kind: CanonicalType.TypeKind;
 					domain_base_type: string;
+			  })
+			| (Omit<CanonicalType.Range, "range_subtype"> & {
+					kind: CanonicalType.TypeKind;
+					range_subtype: string;
 			  });
 	}
 
@@ -329,6 +334,15 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 						kind: CanonicalType.TypeKind.Domain,
 						domain_base_type: canonical[0]!,
 					}) satisfies CanonicalType.Domain;
+				}
+
+				if (each.kind === CanonicalType.TypeKind.Range) {
+					const canonical = await canonicaliseTypes(db, [each.range_subtype]);
+					return removeNulls({
+						...each,
+						kind: CanonicalType.TypeKind.Range,
+						range_subtype: canonical[0]!,
+					}) satisfies CanonicalType.Range;
 				}
 
 				return removeNulls(each) satisfies CanonicalType;

@@ -141,6 +141,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(imports, item)));
 				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(imports, item)));
 				if (item.kind === "domain") file += join(gens.map(gen => gen.domain(imports, item)));
+				if (item.kind === "range") file += join(gens.map(gen => gen.range(imports, item)));
 				if (item.kind === "function") file += join(gens.map(gen => gen.function(imports, item)));
 
 				const parts: string[] = [];

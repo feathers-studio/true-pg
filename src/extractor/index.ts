@@ -7,6 +7,7 @@ import extractEnum, { type EnumDetails } from "./kinds/enum.ts";
 import extractComposite, { type CompositeTypeDetails } from "./kinds/composite.ts";
 import extractFunction, { type FunctionDetails } from "./kinds/function.ts";
 import extractDomain, { type DomainDetails } from "./kinds/domain.ts";
+import extractRange, { type RangeDetails } from "./kinds/range.ts";
 
 import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
@@ -14,7 +15,7 @@ import type { Kind, PgType } from "./pgtype.ts";
 import { canonicaliseTypes, CanonicalType } from "./canonicalise.ts";
 
 export { CanonicalType };
-export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails };
+export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails, DomainDetails, RangeDetails };
 export type { TableColumn } from "./kinds/table.ts";
 export type { FunctionParameter, FunctionReturnType } from "./kinds/function.ts";
 export { FunctionReturnTypeKind } from "./kinds/function.ts";
@@ -25,6 +26,7 @@ interface DetailsMap {
 	composite: CompositeTypeDetails;
 	function: FunctionDetails;
 	domain: DomainDetails;
+	range: RangeDetails;
 }
 
 /**
@@ -38,9 +40,16 @@ export type Schema = {
 	composites: CompositeTypeDetails[];
 	functions: FunctionDetails[];
 	domains: DomainDetails[];
+	ranges: RangeDetails[];
 };
 
-export type SchemaType = EnumDetails | TableDetails | CompositeTypeDetails | FunctionDetails | DomainDetails;
+export type SchemaType =
+	| EnumDetails
+	| TableDetails
+	| CompositeTypeDetails
+	| FunctionDetails
+	| DomainDetails
+	| RangeDetails;
 
 const emptySchema: Omit<Schema, "name"> = {
 	enums: [],
@@ -48,6 +57,7 @@ const emptySchema: Omit<Schema, "name"> = {
 	composites: [],
 	functions: [],
 	domains: [],
+	ranges: [],
 };
 
 type Populator<K extends Kind> = (pg: DbAdapter, pgType: PgType<K>) => Promise<DetailsMap[K] | DetailsMap[K][]>;
@@ -58,6 +68,7 @@ const populatorMap: { [K in Kind]: Populator<K> } = {
 	composite: extractComposite,
 	function: extractFunction,
 	domain: extractDomain,
+	range: extractRange,
 };
 
 /**

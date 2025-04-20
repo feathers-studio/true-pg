@@ -1,6 +1,6 @@
 import {
+	CanonicalType,
 	FunctionReturnTypeKind,
-	type CanonicalType,
 	type FunctionReturnType,
 	type Schema,
 	type TableColumn,
@@ -154,6 +154,13 @@ export const Kysely = createGenerator(opts => {
 		domain(imports, type) {
 			let out = "";
 			out += `export type ${this.formatSchemaType(type)} = ${this.formatType(type.canonical.domain_base_type)};`;
+			return out;
+		},
+
+		range(imports, type) {
+			let out = "";
+			// force this to be string because range has to be passed as a string to Kysely
+			out += `export type ${this.formatSchemaType(type)} = string;`;
 			return out;
 		},
 

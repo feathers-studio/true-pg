@@ -15,7 +15,7 @@ export const adapters: Record<string, createGenerator> = {
 	zod: Zod,
 };
 
-const filter_function = (func: FunctionDetails, warnings: string[]) => {
+const filter_function = (func: FunctionDetails) => {
 	const typesToFilter = [
 		"pg_catalog.trigger",
 		"pg_catalog.event_trigger",
@@ -26,31 +26,24 @@ const filter_function = (func: FunctionDetails, warnings: string[]) => {
 		"pg_catalog.tsm_handler",
 	];
 
-	const warn = (type: string) =>
-		warnings.push(`Skipping function ${func.name}: cannot represent ${type} (safe to ignore)`);
-
 	if (func.returnType.kind === FunctionReturnTypeKind.InlineTable) {
 		for (const col of func.returnType.columns) {
 			if (typesToFilter.includes(col.type.canonical_name)) {
-				warn(col.type.canonical_name);
 				return false;
 			}
 		}
 	} else if (func.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
 		if (typesToFilter.includes(func.returnType.schema + "." + func.returnType.name)) {
-			warn(func.returnType.schema + "." + func.returnType.name);
 			return false;
 		}
 	} else {
 		if (typesToFilter.includes(func.returnType.type.canonical_name)) {
-			warn(func.returnType.type.canonical_name);
 			return false;
 		}
 	}
 
 	for (const param of func.parameters) {
 		if (typesToFilter.includes(param.type.canonical_name)) {
-			warn(param.type.canonical_name);
 			return false;
 		}
 	}
@@ -105,7 +98,18 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		const schemaDir = `${out}/${schema.name}`;
 
 		// skip functions that cannot be represented in JavaScript
-		schema.functions = schema.functions.filter(f => filter_function(f, warnings));
+		schema.functions = schema.functions.filter(filter_function);
+
+		{
+			const skipped = schema.functions.filter(f => !filter_function(f));
+			const skipped_functions = skipped.map(f => `  - ${f.name}`).join("\n");
+
+			if (skipped.length) {
+				warnings.push(
+					`Skipping ${skipped.length} functions because they cannot be represented in JavaScript (safe to ignore):\n${skipped_functions}`,
+				);
+			}
+		}
 
 		let createIndex = false;
 

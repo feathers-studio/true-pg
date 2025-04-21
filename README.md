@@ -1,6 +1,6 @@
 # true-pg
 
-A truthful and complete<sup>†</sup> TypeScript code generator for PostgreSQL database schemas.
+A truthful and complete [^1] TypeScript code generator for PostgreSQL database schemas.
 
 ## Installation
 
@@ -22,12 +22,12 @@ true-pg [options]
 
 Options:
 
-- `-h, --help` - Show help information
-- `-c, --config [path]` - Path to config file (JSON)
-- `-u, --uri [uri]` - Database URI (Postgres only!)
-- `-o, --out [path]` - Path to output directory (defaults to "models")
-- `-a, --adapter [adapter]` - Adapter to use (e.g. `kysely`, `zod`). Can be specified multiple times.
-- `-A, --all-adapters` - Enable all built-in adapters
+-   `-h, --help` - Show help information
+-   `-c, --config [path]` - Path to config file (JSON)
+-   `-u, --uri [uri]` - Database URI (Postgres only!)
+-   `-o, --out [path]` - Path to output directory (defaults to "models")
+-   `-a, --adapter [adapter]` - Adapter to use (e.g. `kysely`, `zod`). Can be specified multiple times.
+-   `-A, --all-adapters` - Enable all built-in adapters
 
 You can configure true-pg either through command-line arguments or a config file.
 
@@ -120,8 +120,12 @@ The `SchemaGenerator` interface provides methods to customize code generation:
 | `formatSchemaType(type)`        | Formats schema type names (user_sessions -> UserSessions)         |
 | `formatType(type)`              | Formats type names (pg_catalog.int4 -> number)                    |
 | `table(types, table)`           | Generates code for tables                                         |
+| `view(types, view)`             | Generates code for views                                          |
+| `materialisedView(types, view)` | Generates code for materialised views                             |
 | `enum(types, en)`               | Generates code for enums                                          |
 | `composite(types, composite)`   | Generates code for composite types                                |
+| `domain(types, domain)`         | Generates code for domains                                        |
+| `range(types, range)`           | Generates code for ranges                                         |
 | `function(types, func)`         | Generates code for functions                                      |
 | `schemaKindIndex(schema, kind)` | Generates index for a schema kind (models/public/tables/index.ts) |
 | `schemaIndex(schema)`           | Generates index for a schema (models/public/index.ts)             |
@@ -131,4 +135,4 @@ The `SchemaGenerator` interface provides methods to customize code generation:
 
 [MIT](LICENSE)
 
-<sup>†</sup> We only support tables, enums, composite types, and functions at the moment, but we're working on adding support for views, materialised views, domains, and more.
+[^1]: We support codegen for tables, views, materialized views, enums, composite types, domains, ranges, and functions.

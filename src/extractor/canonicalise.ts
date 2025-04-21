@@ -5,8 +5,8 @@ const removeNulls = <T>(o: T): T => {
 	return o;
 };
 
-export namespace CanonicalType {
-	export enum TypeKind {
+export namespace Canonical {
+	export enum Kind {
 		Base = "base",
 		Composite = "composite",
 		Domain = "domain",
@@ -21,17 +21,17 @@ export namespace CanonicalType {
 		canonical_name: string;
 		schema: string;
 		name: string;
-		kind: TypeKind;
+		kind: Kind;
 		dimensions: number;
 		modifiers?: string | null;
 	}
 
 	export interface Base extends Abstract {
-		kind: TypeKind.Base;
+		kind: Kind.Base;
 	}
 
 	export interface Enum extends Abstract {
-		kind: TypeKind.Enum;
+		kind: Kind.Enum;
 		enum_values: string[];
 	}
 
@@ -39,7 +39,7 @@ export namespace CanonicalType {
 	export interface CompositeAttribute {
 		name: string;
 		index: number;
-		type: CanonicalType;
+		type: Canonical;
 		comment: string | null;
 		defaultValue: any;
 		isNullable: boolean;
@@ -56,33 +56,33 @@ export namespace CanonicalType {
 	}
 
 	export interface Composite extends Abstract {
-		kind: TypeKind.Composite;
+		kind: Kind.Composite;
 		attributes: CompositeAttribute[];
 	}
 
 	export interface Domain extends Abstract {
-		kind: TypeKind.Domain;
-		domain_base_type: CanonicalType;
+		kind: Kind.Domain;
+		domain_base_type: Canonical;
 	}
 
 	export interface Range extends Abstract {
-		kind: TypeKind.Range;
-		range_subtype: CanonicalType;
+		kind: Kind.Range;
+		range_subtype: Canonical;
 	}
 
 	export interface Pseudo extends Abstract {
-		kind: TypeKind.Pseudo;
+		kind: Kind.Pseudo;
 	}
 }
-export type CanonicalType =
-	| CanonicalType.Base
-	| CanonicalType.Enum
-	| CanonicalType.Composite
-	| CanonicalType.Domain
-	| CanonicalType.Range
-	| CanonicalType.Pseudo;
+export type Canonical =
+	| Canonical.Base
+	| Canonical.Enum
+	| Canonical.Composite
+	| Canonical.Domain
+	| Canonical.Range
+	| Canonical.Pseudo;
 
-export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise<CanonicalType[]> => {
+export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Canonical[]> => {
 	if (types.length === 0) return [];
 
 	const placeholders = types.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ");
@@ -267,9 +267,9 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 
 	interface Resolved {
 		type_info:
-			| Exclude<CanonicalType, CanonicalType.Composite | CanonicalType.Domain | CanonicalType.Range>
-			| (Omit<CanonicalType.Composite, "attributes"> & {
-					kind: CanonicalType.TypeKind;
+			| Exclude<Canonical, Canonical.Composite | Canonical.Domain | Canonical.Range>
+			| (Omit<Canonical.Composite, "attributes"> & {
+					kind: Canonical.Kind;
 					attributes: {
 						name: string;
 						index: number;
@@ -282,12 +282,12 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 						generated: "ALWAYS" | "NEVER" | "BY DEFAULT";
 					}[];
 			  })
-			| (Omit<CanonicalType.Domain, "domain_base_type"> & {
-					kind: CanonicalType.TypeKind;
+			| (Omit<Canonical.Domain, "domain_base_type"> & {
+					kind: Canonical.Kind;
 					domain_base_type: string;
 			  })
-			| (Omit<CanonicalType.Range, "range_subtype"> & {
-					kind: CanonicalType.TypeKind;
+			| (Omit<Canonical.Range, "range_subtype"> & {
+					kind: Canonical.Kind;
 					range_subtype: string;
 			  });
 	}
@@ -300,11 +300,11 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 		resolved
 			.map(each => each.type_info)
 			.map(async each => {
-				if (each.kind === CanonicalType.TypeKind.Composite) {
+				if (each.kind === Canonical.Kind.Composite) {
 					const types = each.attributes.map(each => each.type_name);
-					const canonical = await canonicaliseTypes(db, types);
+					const canonical = await canonicalise(db, types);
 
-					const attributes: CanonicalType.CompositeAttribute[] = await Promise.all(
+					const attributes: Canonical.CompositeAttribute[] = await Promise.all(
 						each.attributes.map(async (each, index) => {
 							return {
 								name: each.name,
@@ -321,31 +321,31 @@ export const canonicaliseTypes = async (db: DbAdapter, types: string[]): Promise
 
 					return removeNulls({
 						...each,
-						kind: CanonicalType.TypeKind.Composite,
+						kind: Canonical.Kind.Composite,
 						attributes,
-					}) satisfies CanonicalType.Composite;
+					}) satisfies Canonical.Composite;
 				}
 
-				if (each.kind === CanonicalType.TypeKind.Domain) {
-					const canonical = await canonicaliseTypes(db, [each.domain_base_type]);
+				if (each.kind === Canonical.Kind.Domain) {
+					const canonical = await canonicalise(db, [each.domain_base_type]);
 
 					return removeNulls({
 						...each,
-						kind: CanonicalType.TypeKind.Domain,
+						kind: Canonical.Kind.Domain,
 						domain_base_type: canonical[0]!,
-					}) satisfies CanonicalType.Domain;
+					}) satisfies Canonical.Domain;
 				}
 
-				if (each.kind === CanonicalType.TypeKind.Range) {
-					const canonical = await canonicaliseTypes(db, [each.range_subtype]);
+				if (each.kind === Canonical.Kind.Range) {
+					const canonical = await canonicalise(db, [each.range_subtype]);
 					return removeNulls({
 						...each,
-						kind: CanonicalType.TypeKind.Range,
+						kind: Canonical.Kind.Range,
 						range_subtype: canonical[0]!,
-					}) satisfies CanonicalType.Range;
+					}) satisfies Canonical.Range;
 				}
 
-				return removeNulls(each) satisfies CanonicalType;
+				return removeNulls(each) satisfies Canonical;
 			}),
 	);
 };

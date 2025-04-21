@@ -12,9 +12,9 @@ import extractRange, { type RangeDetails } from "./kinds/range.ts";
 import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
 
-import { canonicaliseTypes, CanonicalType } from "./canonicalise.ts";
+import { canonicalise, Canonical } from "./canonicalise.ts";
 
-export { CanonicalType };
+export { Canonical };
 export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails, DomainDetails, RangeDetails };
 export type { TableColumn } from "./kinds/table.ts";
 export type { FunctionParameter, FunctionReturnType } from "./kinds/function.ts";
@@ -135,8 +135,8 @@ export class Extractor {
 		this.db = new DbAdapter(pg);
 	}
 
-	async canonicaliseTypes(types: string[]) {
-		return canonicaliseTypes(this.db, types);
+	async canonicalise(types: string[]) {
+		return canonicalise(this.db, types);
 	}
 
 	async getBuiltinTypes(): Promise<
@@ -150,7 +150,9 @@ export class Extractor {
 		const db = this.db;
 
 		const query = `
-			SELECT t.typname AS name,
+			SELECT
+				t.typname AS name,
+				t.typlen AS internal_size,
 				pg_catalog.format_type(t.oid, NULL) AS format,
 				CASE t.typtype
 					WHEN 'b' THEN 'base'
@@ -162,15 +164,15 @@ export class Extractor {
 					ELSE 'unknown'
 				END AS kind
 			FROM pg_catalog.pg_type t
-			WHERE t.typnamespace = 
-				(SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'pg_catalog')
+			WHERE t.typnamespace = 'pg_catalog'::regnamespace
 			ORDER BY name;
 		`;
 
 		const result = await db.query<{
 			name: string;
+			internal_size: number;
 			format: string;
-			kind: CanonicalType.TypeKind;
+			kind: Canonical.Kind;
 		}>(query);
 
 		await db.close();

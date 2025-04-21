@@ -1,6 +1,6 @@
 import {
 	FunctionReturnTypeKind,
-	type CanonicalType,
+	type Canonical,
 	type FunctionReturnType,
 	type Schema,
 	type TableColumn,
@@ -35,7 +35,7 @@ export const Zod = createGenerator(opts => {
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: CanonicalType | FunctionReturnType.ExistingTable) => {
+	const add = (imports: Nodes.ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") zod(imports, "z");
 		else
 			imports.add(
@@ -67,7 +67,7 @@ export const Zod = createGenerator(opts => {
 		return `\t${out},\n`;
 	};
 
-	const composite_attribute = (imports: Nodes.ImportList, attr: CanonicalType.CompositeAttribute) => {
+	const composite_attribute = (imports: Nodes.ImportList, attr: Canonical.CompositeAttribute) => {
 		let out = attr.name;
 		out += `: ${generator.formatType(attr.type)}`;
 		add(imports, attr.type);

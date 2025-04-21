@@ -1,5 +1,5 @@
 import {
-	CanonicalType,
+	Canonical,
 	FunctionReturnTypeKind,
 	type FunctionReturnType,
 	type Schema,
@@ -35,7 +35,7 @@ export const Kysely = createGenerator(opts => {
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: CanonicalType | FunctionReturnType.ExistingTable) => {
+	const add = (imports: Nodes.ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") return;
 		imports.add(
 			new Nodes.InternalImport({
@@ -83,7 +83,7 @@ export const Kysely = createGenerator(opts => {
 	const composite_attribute = (
 		generator: SchemaGenerator,
 		imports: Nodes.ImportList,
-		attr: CanonicalType.CompositeAttribute,
+		attr: Canonical.CompositeAttribute,
 	) => {
 		let out = attr.name;
 

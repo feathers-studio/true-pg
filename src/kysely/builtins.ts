@@ -37,4 +37,5 @@ export const builtins: Record<string, string> = {
 	"pg_catalog.void": "void",
 	"pg_catalog.bytea": "string",
 	"pg_catalog.vector": "number[]",
+	"pg_catalog.tsvector": "string[]",
 };

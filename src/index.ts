@@ -185,9 +185,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 export async function generate(opts: TruePGConfig, generators?: createGenerator[]) {
 	const out = opts.out || "./models";
 
-	if (!(opts.uri || opts.config || opts.pg)) {
+	if (!("uri" in opts) && !("config" in opts) && !("pg" in opts)) {
 		console.error(
-			"One of these options are required in your config file: uri, config. See documentation for more information.",
+			"One of these options are required in your config file: uri, config, pg. See documentation for more information.",
 		);
 		process.exit(1);
 	}

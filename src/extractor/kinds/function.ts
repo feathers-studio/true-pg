@@ -1,7 +1,7 @@
 import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
-import { canonicaliseTypes, CanonicalType as CanonicalType } from "../canonicalise.ts";
+import { canonicalise, Canonical } from "../canonicalise.ts";
 import { parsePostgresTableDefinition } from "./util/parseInlineTable.ts";
 
 const parameterModeMap = {
@@ -23,7 +23,7 @@ const INPUT_MODES = ["i", "b", "v"] as (keyof typeof parameterModeMap)[];
 
 export type FunctionParameter = {
 	name: string;
-	type: CanonicalType;
+	type: Canonical;
 	mode: ParameterMode;
 	hasDefault: boolean;
 	ordinalPosition: number;
@@ -54,13 +54,13 @@ export enum FunctionReturnTypeKind {
 export namespace FunctionReturnType {
 	export type Regular = {
 		kind: FunctionReturnTypeKind.Regular;
-		type: CanonicalType;
+		type: Canonical;
 		isSet: boolean;
 	};
 
 	export type InlineTable = {
 		kind: FunctionReturnTypeKind.InlineTable;
-		columns: { name: string; type: CanonicalType }[];
+		columns: { name: string; type: Canonical }[];
 		isSet: boolean;
 	};
 
@@ -171,7 +171,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (row.arg_names && !row.arg_modes) row.arg_modes = row.arg_names.map(() => "i");
 
 			const argModes = row.arg_modes?.map(mode => parameterModeMap[mode]) ?? [];
-			const canonical_arg_types = row.arg_types ? await canonicaliseTypes(db, row.arg_types) : [];
+			const canonical_arg_types = row.arg_types ? await canonicalise(db, row.arg_types) : [];
 
 			let returnType: FunctionReturnType;
 
@@ -180,7 +180,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (tableMatch) {
 				const columnDefs = parsePostgresTableDefinition(row.declared_return_type);
 				const columnTypes = columnDefs.map(col => col.type);
-				const canonicalColumnTypes = await canonicaliseTypes(db, columnTypes);
+				const canonicalColumnTypes = await canonicalise(db, columnTypes);
 
 				returnType = {
 					kind: FunctionReturnTypeKind.InlineTable,
@@ -211,7 +211,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						// "c" = composite type
 						row.return_type_relation_kind === "c"
 					) {
-						const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+						const canonicalReturnType = (await canonicalise(db, [row.return_type_string]))[0]!;
 						returnType = {
 							kind: FunctionReturnTypeKind.Regular,
 							type: canonicalReturnType,
@@ -221,7 +221,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						console.warn(
 							`Composite return type '${row.return_type_string}' has unexpected relkind '${row.return_type_relation_kind}' for function ${pgType.schemaName}.${row.name}`,
 						);
-						const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+						const canonicalReturnType = (await canonicalise(db, [row.return_type_string]))[0]!;
 						returnType = {
 							kind: FunctionReturnTypeKind.Regular,
 							type: canonicalReturnType,
@@ -229,7 +229,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						};
 					}
 				} else {
-					const canonicalReturnType = (await canonicaliseTypes(db, [row.return_type_string]))[0]!;
+					const canonicalReturnType = (await canonicalise(db, [row.return_type_string]))[0]!;
 					returnType = {
 						kind: FunctionReturnTypeKind.Regular,
 						type: canonicalReturnType,

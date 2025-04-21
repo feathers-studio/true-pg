@@ -1,5 +1,5 @@
 import {
-	CanonicalType,
+	Canonical,
 	type Extractor,
 	type TableDetails,
 	type EnumDetails,
@@ -69,7 +69,7 @@ export namespace Nodes {
 		// what to import
 		name: string;
 		// underlying type that is being imported
-		canonical_type: CanonicalType | FunctionReturnType.ExistingTable;
+		canonical_type: Canonical | FunctionReturnType.ExistingTable;
 		// use `type` syntax?
 		typeOnly: boolean;
 		// use `* as` syntax?
@@ -80,7 +80,7 @@ export namespace Nodes {
 
 		constructor(args: {
 			name: string;
-			canonical_type: CanonicalType | FunctionReturnType.ExistingTable;
+			canonical_type: Canonical | FunctionReturnType.ExistingTable;
 			typeOnly: boolean;
 			star: boolean;
 		}) {
@@ -172,7 +172,7 @@ export namespace Nodes {
 					})
 					.filter(
 						imp =>
-							imp.canonical_type.kind === CanonicalType.TypeKind.Base ||
+							imp.canonical_type.kind === Canonical.Kind.Base ||
 							allowed_kind_names.includes(`${imp.canonical_type.kind}s` as any),
 					)
 					.map(imp => {
@@ -233,14 +233,25 @@ export namespace Nodes {
 
 export type ExtractorConfig = Exclude<ConstructorParameters<typeof Extractor>[0], string | undefined>;
 
-export interface TruePGConfig {
-	pg?: ExtractorConfig["pg"];
-	uri?: ExtractorConfig["uri"];
-	config?: ExtractorConfig["config"];
+export interface BaseConfig {
 	out: string;
 	adapters: string[];
 	defaultSchema?: string;
 }
+
+export interface PgConfig extends BaseConfig {
+	pg: ExtractorConfig["pg"];
+}
+
+export interface UriConfig extends BaseConfig {
+	uri: ExtractorConfig["uri"];
+}
+
+export interface ConfigConfig extends BaseConfig {
+	config: ExtractorConfig["config"];
+}
+
+export type TruePGConfig = PgConfig | UriConfig | ConfigConfig;
 
 export function config(opts: TruePGConfig) {
 	return opts;
@@ -278,7 +289,7 @@ export interface SchemaGenerator {
 	 * This is useful if you want to use a different name for a type in the generated code.
 	 * Example: "users" -> "UsersTable"
 	 */
-	formatType(type: CanonicalType | FunctionReturnType.ExistingTable): string;
+	formatType(type: Canonical | FunctionReturnType.ExistingTable): string;
 
 	table(
 		/** @out Append used types to this array */

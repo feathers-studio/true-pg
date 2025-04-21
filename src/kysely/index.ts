@@ -9,7 +9,7 @@ import {
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join, quoteI, type Deunionise } from "../util.ts";
+import { join, quote, quoteI, type Deunionise } from "../util.ts";
 
 const toPascalCase = (str: string) =>
 	str
@@ -346,7 +346,9 @@ export const Kysely = createGenerator(opts => {
 								else qualified = t.name;
 								qualified = quoteI(qualified);
 
-								return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
+								return `\t${qualified}: ${this.formatSchema(schema.name)}[${quote(
+									t.kind + "s",
+								)}][${quote(t.name)}];`;
 							})
 							.join("\n");
 

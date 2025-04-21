@@ -2,6 +2,8 @@ import {
 	Canonical,
 	type Extractor,
 	type TableDetails,
+	type ViewDetails,
+	type MaterializedViewDetails,
 	type EnumDetails,
 	type CompositeTypeDetails,
 	type DomainDetails,
@@ -14,10 +16,19 @@ import {
 
 import { dirname, relative } from "node:path/posix";
 import { join } from "./util.ts";
-import type { ViewDetails } from "./extractor/kinds/view.ts";
 
 // To be updated when we add support for other kinds
-export const allowed_kind_names = ["tables", "enums", "composites", "functions", "domains", "ranges", "views"] as const;
+export const allowed_kind_names = [
+	"tables",
+	"views",
+	"materializedViews",
+	"enums",
+	"composites",
+	"functions",
+	"domains",
+	"ranges",
+] as const;
+
 export type allowed_kind_names = (typeof allowed_kind_names)[number];
 
 export interface FolderStructure {
@@ -304,6 +315,13 @@ export interface SchemaGenerator {
 		imports: Nodes.ImportList,
 		/** Information about the view */
 		view: ViewDetails,
+	): string;
+
+	materializedView(
+		/** @out Append used types to this array */
+		imports: Nodes.ImportList,
+		/** Information about the materialized view */
+		materializedView: MaterializedViewDetails,
 	): string;
 
 	enum(

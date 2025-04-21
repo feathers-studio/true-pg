@@ -3,12 +3,13 @@ import { PGlite as Pglite } from "@electric-sql/pglite";
 import { DbAdapter } from "./adapter.ts";
 
 import extractTable, { type TableDetails } from "./kinds/table.ts";
+import extractView, { type ViewDetails } from "./kinds/view.ts";
+import extractMaterializedView, { type MaterializedViewDetails } from "./kinds/materialized-view.ts";
 import extractEnum, { type EnumDetails } from "./kinds/enum.ts";
 import extractComposite, { type CompositeTypeDetails } from "./kinds/composite.ts";
 import extractFunction, { type FunctionDetails } from "./kinds/function.ts";
 import extractDomain, { type DomainDetails } from "./kinds/domain.ts";
 import extractRange, { type RangeDetails } from "./kinds/range.ts";
-import extractView, { type ViewDetails } from "./kinds/view.ts";
 
 import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
@@ -19,6 +20,7 @@ export { Canonical };
 export type {
 	TableDetails,
 	ViewDetails,
+	MaterializedViewDetails,
 	EnumDetails,
 	CompositeTypeDetails,
 	FunctionDetails,
@@ -27,12 +29,14 @@ export type {
 };
 export type { TableColumn } from "./kinds/table.ts";
 export type { ViewColumn } from "./kinds/view.ts";
+export type { MaterializedViewColumn } from "./kinds/materialized-view.ts";
 export type { FunctionParameter, FunctionReturnType } from "./kinds/function.ts";
 export { FunctionReturnTypeKind } from "./kinds/function.ts";
 
 interface DetailsMap {
 	table: TableDetails;
 	view: ViewDetails;
+	materializedView: MaterializedViewDetails;
 	enum: EnumDetails;
 	composite: CompositeTypeDetails;
 	function: FunctionDetails;
@@ -48,6 +52,7 @@ export type Schema = {
 	name: string;
 	tables: TableDetails[];
 	views: ViewDetails[];
+	materializedViews: MaterializedViewDetails[];
 	enums: EnumDetails[];
 	composites: CompositeTypeDetails[];
 	functions: FunctionDetails[];
@@ -58,6 +63,7 @@ export type Schema = {
 export type SchemaType =
 	| TableDetails
 	| ViewDetails
+	| MaterializedViewDetails
 	| EnumDetails
 	| CompositeTypeDetails
 	| FunctionDetails
@@ -67,6 +73,7 @@ export type SchemaType =
 const emptySchema: Omit<Schema, "name"> = {
 	tables: [],
 	views: [],
+	materializedViews: [],
 	enums: [],
 	composites: [],
 	functions: [],
@@ -79,6 +86,7 @@ type Populator<K extends Kind> = (pg: DbAdapter, pgType: PgType<K>) => Promise<D
 const populatorMap: { [K in Kind]: Populator<K> } = {
 	table: extractTable,
 	view: extractView,
+	materializedView: extractMaterializedView,
 	enum: extractEnum,
 	composite: extractComposite,
 	function: extractFunction,

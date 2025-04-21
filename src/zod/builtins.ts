@@ -6,13 +6,12 @@ export const builtins: Record<string, string> = {
 
 	// JS numbers are always floating point, so there is only 53 bits of precision
 	// for the integer part. Thus, storing a 64-bit integer in a JS number will
-	// result in potential data loss. We therefore use strings for 64-bit integers
-	// the same way that the pg driver does.
-	"pg_catalog.int8": "z.string()",
+	// result in potential data loss.
+	"pg_catalog.int8": "z.bigint()",
+	"pg_catalog.numeric": "z.bigint()",
 
 	"pg_catalog.float4": "z.number()",
 	"pg_catalog.float8": "z.number()",
-	"pg_catalog.numeric": "z.string()",
 	"pg_catalog.bool": "z.boolean()",
 	"pg_catalog.json": "z.unknown()",
 	"pg_catalog.jsonb": "z.unknown()",

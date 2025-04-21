@@ -2,6 +2,7 @@ import {
 	FunctionReturnTypeKind,
 	type Canonical,
 	type FunctionReturnType,
+	type MaterializedViewColumn,
 	type Schema,
 	type TableColumn,
 	type ViewColumn,
@@ -52,7 +53,7 @@ export const Zod = createGenerator(opts => {
 	const column = (
 		imports: Nodes.ImportList,
 		/** Information about the column */
-		col: Deunionise<TableColumn | ViewColumn>,
+		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
 		// don't create a property for always generated columns
 		if (col.generated === "ALWAYS") return "";
@@ -117,9 +118,20 @@ export const Zod = createGenerator(opts => {
 		view(imports, view) {
 			let out = "";
 			if (view.comment) out += `/** ${view.comment} */\n`;
-			out += `export const ${this.formatSchemaType(view)} = z.object({\n`;
 			zod(imports, "z");
+			out += `export const ${this.formatSchemaType(view)} = z.object({\n`;
 			for (const col of view.columns) out += column(imports, col);
+			out += "});";
+
+			return out;
+		},
+
+		materializedView(imports, materializedView) {
+			let out = "";
+			if (materializedView.comment) out += `/** ${materializedView.comment} */\n`;
+			zod(imports, "z");
+			out += `export const ${this.formatSchemaType(materializedView)} = z.object({\n`;
+			for (const col of materializedView.columns) out += column(imports, col);
 			out += "});";
 
 			return out;

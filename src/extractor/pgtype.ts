@@ -17,7 +17,7 @@ export const classKindMap = {
 	r: "table",
 	p: "table", // Treat partitioned tables as tables
 	v: "view",
-	// m: "materializedView",
+	m: "materializedView",
 	c: "composite",
 	// f: "foreignTable",
 

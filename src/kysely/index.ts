@@ -2,6 +2,7 @@ import {
 	Canonical,
 	FunctionReturnTypeKind,
 	type FunctionReturnType,
+	type MaterializedViewColumn,
 	type Schema,
 	type TableColumn,
 	type ViewColumn,
@@ -54,7 +55,7 @@ export const Kysely = createGenerator(opts => {
 		/** @out Append used types to this array */
 		imports: Nodes.ImportList,
 		/** Information about the column */
-		col: Deunionise<TableColumn | ViewColumn>,
+		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
 		let base = generator.formatType(col.type);
 		if (col.type.dimensions > 0) base += "[]".repeat(col.type.dimensions);
@@ -137,6 +138,16 @@ export const Kysely = createGenerator(opts => {
 			if (view.comment) out += `/** ${view.comment} */\n`;
 			out += `export interface ${this.formatSchemaType(view)} {\n`;
 			for (const col of view.columns) out += column(this, imports, col);
+			out += "}";
+
+			return out;
+		},
+
+		materializedView(imports, materializedView) {
+			let out = "";
+			if (materializedView.comment) out += `/** ${materializedView.comment} */\n`;
+			out += `export interface ${this.formatSchemaType(materializedView)} {\n`;
+			for (const col of materializedView.columns) out += column(this, imports, col);
 			out += "}";
 
 			return out;

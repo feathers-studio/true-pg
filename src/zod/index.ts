@@ -193,15 +193,18 @@ export const Zod = createGenerator(opts => {
 			out += "\treturnType: ";
 
 			if (type.returnType.kind === FunctionReturnTypeKind.InlineTable) {
-				out += "z.object({\n";
-				for (const col of type.returnType.columns) {
-					out += `\t\t${col.name}: `;
-					out += this.formatType(col.type);
-					add(imports, col.type);
-					if (col.type.dimensions > 0) out += ".array()".repeat(col.type.dimensions);
-					out += `,\n`;
+				if (type.returnType.columns.length === 0) out += "z.void()/* RETURNS TABLE with no columns */";
+				else {
+					out += "z.object({\n";
+					for (const col of type.returnType.columns) {
+						out += `\t\t"${col.name}": `;
+						out += this.formatType(col.type);
+						add(imports, col.type);
+						if (col.type.dimensions > 0) out += ".array()".repeat(col.type.dimensions);
+						out += `,\n`;
+					}
+					out += "\t})";
 				}
-				out += "\t})";
 			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
 				out += this.formatType(type.returnType);
 				add(imports, type.returnType);
@@ -215,6 +218,7 @@ export const Zod = createGenerator(opts => {
 			if (type.returnType.isSet) out += ".array()";
 			out += ",\n};";
 
+			zod(imports, "z");
 			return out;
 		},
 

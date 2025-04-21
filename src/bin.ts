@@ -60,7 +60,6 @@ if (opts["all-adapters"]) opts.adapter = Object.keys(adapters);
 
 if (!(opts.adapter || config.adapters)) console.warn('No adapters specified, using default: ["kysely"]');
 
-opts.out ??= "models";
 // allow single adapter or comma-separated list of adapters
 if (typeof opts.adapter === "string") opts.adapter = opts.adapter.split(",");
 

@@ -211,15 +211,18 @@ export const Kysely = createGenerator(opts => {
 			}
 
 			if (type.returnType.kind === FunctionReturnTypeKind.InlineTable) {
-				out += "{\n";
-				for (const col of type.returnType.columns) {
-					out += `\t\t${col.name}: `;
-					out += this.formatType(col.type);
-					add(imports, col.type);
-					if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
-					out += `;\n`;
+				if (type.returnType.columns.length === 0) out += "void/* RETURNS TABLE with no columns */";
+				else {
+					out += "{\n";
+					for (const col of type.returnType.columns) {
+						out += `\t\t"${col.name}": `;
+						out += this.formatType(col.type);
+						add(imports, col.type);
+						if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
+						out += `;\n`;
+					}
+					out += "\t}";
 				}
-				out += "\t}";
 			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
 				out += this.formatType(type.returnType);
 				add(imports, type.returnType);

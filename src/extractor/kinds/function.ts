@@ -2,6 +2,7 @@ import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
 import { canonicaliseTypes, CanonicalType as CanonicalType } from "../canonicalise.ts";
+import { parsePostgresTableDefinition } from "./util/parseInlineTable.ts";
 
 const parameterModeMap = {
 	i: "IN",
@@ -57,10 +58,10 @@ export namespace FunctionReturnType {
 		isSet: boolean;
 	};
 
-	export type ImplicitTable = {
+	export type InlineTable = {
 		kind: FunctionReturnTypeKind.InlineTable;
 		columns: { name: string; type: CanonicalType }[];
-		isSet: true;
+		isSet: boolean;
 	};
 
 	export type ExistingTable = {
@@ -73,7 +74,7 @@ export namespace FunctionReturnType {
 
 export type FunctionReturnType =
 	| FunctionReturnType.Regular
-	| FunctionReturnType.ImplicitTable
+	| FunctionReturnType.InlineTable
 	| FunctionReturnType.ExistingTable;
 
 export interface FunctionDetails extends PgType<"function"> {
@@ -176,22 +177,8 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 
 			const tableMatch = row.declared_return_type.match(/^TABLE\((.*)\)$/i);
 
-			if (tableMatch && tableMatch[1]) {
-				const columnDefs = tableMatch[1].split(",").map(colDef => {
-					const parts = colDef.trim().match(/^(\S+)\s+(.*)$/);
-					if (!parts || parts.length < 3) {
-						console.warn(
-							`Could not parse column definition: "${colDef}" in function ${pgType.schemaName}.${row.name}`,
-						);
-						return { name: "unknown", type: "unknown" };
-					}
-					const name = parts[1]!;
-					const typeMatch = parts[2]!.match(/^(\S+?)(?:\s*\(|\s*$)/);
-					const type = typeMatch ? typeMatch[1]! : parts[2]!.trim();
-
-					return { name, type };
-				});
-
+			if (tableMatch) {
+				const columnDefs = parsePostgresTableDefinition(row.declared_return_type);
 				const columnTypes = columnDefs.map(col => col.type);
 				const canonicalColumnTypes = await canonicaliseTypes(db, columnTypes);
 
@@ -201,7 +188,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						name: col.name,
 						type: canonicalColumnTypes[i]!,
 					})),
-					isSet: true,
+					isSet: row.returns_set,
 				};
 			} else {
 				// "c" = composite type

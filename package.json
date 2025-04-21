@@ -1,6 +1,6 @@
 {
 	"name": "true-pg",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"type": "module",
 	"module": "lib/index.js",
 	"main": "lib/index.js",
@@ -21,7 +21,8 @@
 		"prepare": "bun run build"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@types/pg": "^8.11.13"
 	},
 	"peerDependencies": {
 		"kysely": "^0.27",
@@ -29,7 +30,9 @@
 		"zod": "^3"
 	},
 	"dependencies": {
+		"@electric-sql/pglite": "^0.2.17",
 		"cosmiconfig": "^9.0.0",
-		"mri": "^1.2.0"
+		"mri": "^1.2.0",
+		"pg": "^8.14.1"
 	}
 }

@@ -1,8 +1,8 @@
 import { Extractor, FunctionReturnTypeKind } from "./extractor/index.ts";
 import type { FunctionDetails, Schema } from "./extractor/index.ts";
-import { rm, mkdir, writeFile } from "fs/promises";
+import { rm, mkdir, writeFile } from "node:fs/promises";
 import { Nodes, allowed_kind_names, type FolderStructure, type TruePGConfig, type createGenerator } from "./types.ts";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
 import { join } from "./util.ts";
 
 export { config } from "./types.ts";

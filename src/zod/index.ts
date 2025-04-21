@@ -4,10 +4,11 @@ import {
 	type FunctionReturnType,
 	type Schema,
 	type TableColumn,
+	type ViewColumn,
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join } from "../util.ts";
+import { join, type Deunionise } from "../util.ts";
 
 const isIdentifierInvalid = (str: string) => {
 	const invalid = str.match(/[^a-zA-Z0-9_]/);
@@ -51,7 +52,7 @@ export const Zod = createGenerator(opts => {
 	const column = (
 		imports: Nodes.ImportList,
 		/** Information about the column */
-		col: TableColumn,
+		col: Deunionise<TableColumn | ViewColumn>,
 	) => {
 		// don't create a property for always generated columns
 		if (col.generated === "ALWAYS") return "";
@@ -108,6 +109,17 @@ export const Zod = createGenerator(opts => {
 			out += `export const ${this.formatSchemaType(table)} = z.object({\n`;
 			zod(imports, "z");
 			for (const col of table.columns) out += column(imports, col);
+			out += "});";
+
+			return out;
+		},
+
+		view(imports, view) {
+			let out = "";
+			if (view.comment) out += `/** ${view.comment} */\n`;
+			out += `export const ${this.formatSchemaType(view)} = z.object({\n`;
+			zod(imports, "z");
+			for (const col of view.columns) out += column(imports, col);
 			out += "});";
 
 			return out;

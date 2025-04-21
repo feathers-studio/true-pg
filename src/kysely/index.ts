@@ -4,10 +4,11 @@ import {
 	type FunctionReturnType,
 	type Schema,
 	type TableColumn,
+	type ViewColumn,
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join } from "../util.ts";
+import { join, type Deunionise } from "../util.ts";
 
 const isIdentifierInvalid = (str: string) => {
 	const invalid = str.match(/[^a-zA-Z0-9_]/);
@@ -53,7 +54,7 @@ export const Kysely = createGenerator(opts => {
 		/** @out Append used types to this array */
 		imports: Nodes.ImportList,
 		/** Information about the column */
-		col: TableColumn,
+		col: Deunionise<TableColumn | ViewColumn>,
 	) => {
 		let base = generator.formatType(col.type);
 		if (col.type.dimensions > 0) base += "[]".repeat(col.type.dimensions);
@@ -126,6 +127,16 @@ export const Kysely = createGenerator(opts => {
 			if (table.comment) out += `/** ${table.comment} */\n`;
 			out += `export interface ${this.formatSchemaType(table)} {\n`;
 			for (const col of table.columns) out += column(this, imports, col);
+			out += "}";
+
+			return out;
+		},
+
+		view(imports, view) {
+			let out = "";
+			if (view.comment) out += `/** ${view.comment} */\n`;
+			out += `export interface ${this.formatSchemaType(view)} {\n`;
+			for (const col of view.columns) out += column(this, imports, col);
 			out += "}";
 
 			return out;

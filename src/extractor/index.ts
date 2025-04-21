@@ -8,6 +8,7 @@ import extractComposite, { type CompositeTypeDetails } from "./kinds/composite.t
 import extractFunction, { type FunctionDetails } from "./kinds/function.ts";
 import extractDomain, { type DomainDetails } from "./kinds/domain.ts";
 import extractRange, { type RangeDetails } from "./kinds/range.ts";
+import extractView, { type ViewDetails } from "./kinds/view.ts";
 
 import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
@@ -15,14 +16,24 @@ import type { Kind, PgType } from "./pgtype.ts";
 import { canonicalise, Canonical } from "./canonicalise.ts";
 
 export { Canonical };
-export type { TableDetails, EnumDetails, CompositeTypeDetails, FunctionDetails, DomainDetails, RangeDetails };
+export type {
+	TableDetails,
+	ViewDetails,
+	EnumDetails,
+	CompositeTypeDetails,
+	FunctionDetails,
+	DomainDetails,
+	RangeDetails,
+};
 export type { TableColumn } from "./kinds/table.ts";
+export type { ViewColumn } from "./kinds/view.ts";
 export type { FunctionParameter, FunctionReturnType } from "./kinds/function.ts";
 export { FunctionReturnTypeKind } from "./kinds/function.ts";
 
 interface DetailsMap {
-	enum: EnumDetails;
 	table: TableDetails;
+	view: ViewDetails;
+	enum: EnumDetails;
 	composite: CompositeTypeDetails;
 	function: FunctionDetails;
 	domain: DomainDetails;
@@ -35,8 +46,9 @@ interface DetailsMap {
  */
 export type Schema = {
 	name: string;
-	enums: EnumDetails[];
 	tables: TableDetails[];
+	views: ViewDetails[];
+	enums: EnumDetails[];
 	composites: CompositeTypeDetails[];
 	functions: FunctionDetails[];
 	domains: DomainDetails[];
@@ -44,16 +56,18 @@ export type Schema = {
 };
 
 export type SchemaType =
-	| EnumDetails
 	| TableDetails
+	| ViewDetails
+	| EnumDetails
 	| CompositeTypeDetails
 	| FunctionDetails
 	| DomainDetails
 	| RangeDetails;
 
 const emptySchema: Omit<Schema, "name"> = {
-	enums: [],
 	tables: [],
+	views: [],
+	enums: [],
 	composites: [],
 	functions: [],
 	domains: [],
@@ -63,8 +77,9 @@ const emptySchema: Omit<Schema, "name"> = {
 type Populator<K extends Kind> = (pg: DbAdapter, pgType: PgType<K>) => Promise<DetailsMap[K] | DetailsMap[K][]>;
 
 const populatorMap: { [K in Kind]: Populator<K> } = {
-	enum: extractEnum,
 	table: extractTable,
+	view: extractView,
+	enum: extractEnum,
 	composite: extractComposite,
 	function: extractFunction,
 	domain: extractDomain,

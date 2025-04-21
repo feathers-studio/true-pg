@@ -14,9 +14,10 @@ import {
 
 import { dirname, relative } from "node:path/posix";
 import { join } from "./util.ts";
+import type { ViewDetails } from "./extractor/kinds/view.ts";
 
 // To be updated when we add support for other kinds
-export const allowed_kind_names = ["tables", "enums", "composites", "functions", "domains", "ranges"] as const;
+export const allowed_kind_names = ["tables", "enums", "composites", "functions", "domains", "ranges", "views"] as const;
 export type allowed_kind_names = (typeof allowed_kind_names)[number];
 
 export interface FolderStructure {
@@ -296,6 +297,13 @@ export interface SchemaGenerator {
 		imports: Nodes.ImportList,
 		/** Information about the table */
 		table: TableDetails,
+	): string;
+
+	view(
+		/** @out Append used types to this array */
+		imports: Nodes.ImportList,
+		/** Information about the view */
+		view: ViewDetails,
 	): string;
 
 	enum(

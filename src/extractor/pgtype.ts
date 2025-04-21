@@ -16,7 +16,7 @@ type TypeKind = (typeof typeKindMap)[keyof typeof typeKindMap];
 export const classKindMap = {
 	r: "table",
 	p: "table", // Treat partitioned tables as tables
-	// v: "view",
+	v: "view",
 	// m: "materializedView",
 	c: "composite",
 	// f: "foreignTable",

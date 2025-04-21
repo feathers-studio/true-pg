@@ -236,8 +236,11 @@ export class Extractor {
 		const typesToExtract = filtered.filter(x => x.kind);
 
 		const skipped = filtered.filter(x => !x.kind).map(x => x.name);
-		console.warn("Skipping types of unsupported kinds:", skipped.join(", "));
-		console.warn("This is a bug!");
+
+		if (skipped.length) {
+			console.warn("Skipping types of unsupported kinds:", skipped.join(", "));
+			console.warn("This is a bug!");
+		}
 
 		options?.onProgressStart?.(typesToExtract.length);
 

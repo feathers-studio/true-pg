@@ -9,12 +9,7 @@ import {
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join, type Deunionise } from "../util.ts";
-
-const isIdentifierInvalid = (str: string) => {
-	const invalid = str.match(/[^a-zA-Z0-9_]/);
-	return invalid !== null;
-};
+import { join, quoteI, type Deunionise } from "../util.ts";
 
 const toPascalCase = (str: string) =>
 	str
@@ -74,7 +69,7 @@ export const Kysely = createGenerator(opts => {
 		}
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
-		out += col.name;
+		out += quoteI(col.name);
 		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
 		add(imports, col.type);
@@ -87,7 +82,7 @@ export const Kysely = createGenerator(opts => {
 		imports: Nodes.ImportList,
 		attr: Canonical.CompositeAttribute,
 	) => {
-		let out = attr.name;
+		let out = quoteI(attr.name);
 
 		if (attr.isNullable) out += "?";
 		out += `: ${generator.formatType(attr.type)}`;
@@ -300,8 +295,7 @@ export const Kysely = createGenerator(opts => {
 
 				out += formatted
 					.map(t => {
-						let name = t.name;
-						if (isIdentifierInvalid(name)) name = `"${name}"`;
+						let name = quoteI(t.name);
 						return `\t\t${name}: ${t.kind}s.${t.formatted};`;
 					})
 					.join("\n");
@@ -314,8 +308,6 @@ export const Kysely = createGenerator(opts => {
 		},
 
 		fullIndex(schemas: Schema[]) {
-			// let out = "";
-
 			const parts: string[] = [];
 
 			parts.push(
@@ -328,8 +320,8 @@ export const Kysely = createGenerator(opts => {
 				let iface = `export interface Database {\n`;
 				iface += schemas
 					.map(schema => {
-						// Kysely only wants tables
-						const tables = schema.tables;
+						// only tables, views, and materialized views are queryable
+						const tables = [...schema.tables, ...schema.views, ...schema.materializedViews];
 
 						let out = "";
 
@@ -347,16 +339,20 @@ export const Kysely = createGenerator(opts => {
 						if (out.length) out += "\n\n";
 						out += formatted
 							.map(t => {
-								const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
-								let qualified = prefix + t.name;
-								if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
+								const isDefault = defaultSchema === schema.name;
+
+								let qualified = "";
+								if (!isDefault) qualified = schema.name + "." + t.name;
+								else qualified = t.name;
+								qualified = quoteI(qualified);
+
 								return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${t.name}"];`;
 							})
 							.join("\n");
 
 						return out;
 					})
-					.join("");
+					.join("\n");
 
 				iface += "\n}";
 				parts.push(iface);

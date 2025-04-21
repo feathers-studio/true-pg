@@ -99,8 +99,6 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		),
 	};
 
-	const start = performance.now();
-
 	for (const schema of Object.values(schemas)) {
 		console.log("Selected schema '%s':\n", schema.name);
 
@@ -176,8 +174,6 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 	const fullIndexFilename = `${out}/index.ts`;
 	await write(fullIndexFilename, fullIndex);
 	console.log("Created full index: %s", fullIndexFilename);
-	const end = performance.now();
-	console.log("Completed in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));
 
 	if (warnings.length > 0) {
 		console.log("\nWarnings generated:");
@@ -196,7 +192,11 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	}
 
 	const extractor = new Extractor(opts);
+
+	const start = performance.now();
 	const schemas = await extractor.extractSchemas();
+	const end = performance.now();
+	console.log("Extracted schemas in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));
 
 	console.info("Adapters enabled: %s\n", opts.adapters.join(", "));
 
@@ -209,4 +209,9 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	await rm(out, { recursive: true, force: true });
 	await mkdir(out, { recursive: true });
 	await multifile(generators, schemas, { ...opts, out });
+
+	{
+		const end = performance.now();
+		console.log("Completed in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));
+	}
 }

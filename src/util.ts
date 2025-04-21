@@ -11,3 +11,12 @@ export type Deunionise<B extends object | undefined, T = B> = Simplify<
 export type Simplify<T> = {
 	[KeyType in keyof T]: T[KeyType];
 } & {};
+
+const isIdentifierInvalid = (str: string) => {
+	const invalid = str.match(/[^a-zA-Z0-9_]/);
+	return invalid !== null;
+};
+
+export const quote = (str: string, using = '"') => `${using}${str.replaceAll(using, "\\" + using)}${using}`;
+
+export const quoteI = (str: string, using = '"') => (isIdentifierInvalid(str) ? quote(str, using) : str);

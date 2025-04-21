@@ -9,12 +9,7 @@ import {
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join, type Deunionise } from "../util.ts";
-
-const isIdentifierInvalid = (str: string) => {
-	const invalid = str.match(/[^a-zA-Z0-9_]/);
-	return invalid !== null;
-};
+import { join, quote, quoteI, type Deunionise } from "../util.ts";
 
 const to_snake_case = (str: string) =>
 	str
@@ -59,7 +54,7 @@ export const Zod = createGenerator(opts => {
 		if (col.generated === "ALWAYS") return "";
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
-		out += col.name;
+		out += quoteI(col.name);
 		let type = generator.formatType(col.type);
 		add(imports, col.type);
 		if (col.type.dimensions > 0) type += ".array()".repeat(col.type.dimensions);
@@ -70,7 +65,8 @@ export const Zod = createGenerator(opts => {
 	};
 
 	const composite_attribute = (imports: Nodes.ImportList, attr: Canonical.CompositeAttribute) => {
-		let out = attr.name;
+		let out = quoteI(attr.name);
+
 		out += `: ${generator.formatType(attr.type)}`;
 		add(imports, attr.type);
 		if (attr.type.dimensions > 0) out += ".array()".repeat(attr.type.dimensions);
@@ -282,8 +278,7 @@ export const Zod = createGenerator(opts => {
 
 				out += formatted
 					.map(t => {
-						let name = t.name;
-						if (isIdentifierInvalid(name)) name = `"${name}"`;
+						let name = quoteI(t.name);
 						return `\t\t${name}: zod_${t.kind}s.${t.formatted},`;
 					})
 					.join("\n");
@@ -331,12 +326,16 @@ export const Zod = createGenerator(opts => {
 								out += "\t// " + kind + "\n";
 								out += join(
 									formatted.map(t => {
-										const prefix = defaultSchema === schema.name ? "" : schema.name + ".";
-										let qualified = prefix + t.name;
-										if (isIdentifierInvalid(qualified)) qualified = `"${qualified}"`;
-										return `\t${qualified}: ${this.formatSchema(schema.name)}["${t.kind}s"]["${
-											t.name
-										}"],`;
+										const isDefault = defaultSchema === schema.name;
+
+										let qualified = "";
+										if (!isDefault) qualified = schema.name + "." + t.name;
+										else qualified = t.name;
+										qualified = quoteI(qualified);
+
+										return `\t${qualified}: ${this.formatSchema(schema.name)}[${quote(
+											t.kind + "s",
+										)}][${quote(t.name)}],`;
 									}),
 									"\n",
 								);

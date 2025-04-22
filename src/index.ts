@@ -9,6 +9,12 @@ export { config } from "./types.ts";
 
 import { Kysely } from "./kysely/index.ts";
 import { Zod } from "./zod/index.ts";
+import { join as joinpath, normalize as normalise } from "node:path";
+
+const time = (start: number) => {
+	const end = performance.now();
+	return (end - start).toFixed(2);
+};
 
 export const adapters: Record<string, createGenerator> = {
 	kysely: Kysely,
@@ -95,7 +101,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 	for (const schema of Object.values(schemas)) {
 		console.log("Selected schema '%s':\n", schema.name);
 
-		const schemaDir = `${out}/${schema.name}`;
+		const schemaDir = joinpath(out, schema.name);
 
 		// skip functions that cannot be represented in JavaScript
 		schema.functions = schema.functions.filter(filter_function);
@@ -117,12 +123,12 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			if (schema[kind].length < 1) continue;
 			createIndex = true;
 
-			await mkdir(`${schemaDir}/${kind}`, { recursive: true });
+			await mkdir(joinpath(schemaDir, kind), { recursive: true });
 			console.log(" Creating %s:\n", kind);
 
 			for (const [i, item] of schema[kind].entries()) {
 				const index = "[" + (i + 1 + "]").padEnd(3, " ");
-				const filename = `${schemaDir}/${kind}/${def_gen.formatSchemaType(item)}.ts`;
+				const filename = joinpath(schemaDir, kind, def_gen.formatSchemaType(item) + ".ts");
 
 				const exists = await existsSync(filename);
 
@@ -156,28 +162,42 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 				await write(filename, file);
 
-				const end = performance.now();
-				console.log("  %s %s \x1b[32m(%sms)\x1B[0m", index, filename, (end - start).toFixed(2));
+				console.log("  %s %s \x1b[32m(%sms)\x1B[0m", index, filename, time(start));
 			}
 
-			const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind, def_gen)));
-			const kindIndexFilename = `${schemaDir}/${kind}/index.ts`;
-			await write(kindIndexFilename, kindIndex);
-			console.log('  ✅   Created "%s" %s index: %s\n', schema.name, kind, kindIndexFilename);
+			{
+				const start = performance.now();
+				const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind, def_gen)));
+				const kindIndexFilename = joinpath(schemaDir, kind, "index.ts");
+				await write(kindIndexFilename, kindIndex);
+				const end = performance.now();
+				console.log(
+					"  ✅   Created %s index: %s \x1b[32m(%sms)\x1B[0m\n",
+					kind,
+					kindIndexFilename,
+					(end - start).toFixed(2),
+				);
+			}
 		}
 
 		if (!createIndex) continue;
 
-		const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
-		const indexFilename = `${out}/${schema.name}/index.ts`;
-		await write(indexFilename, index);
-		console.log(" Created schema index: %s\n", indexFilename);
+		{
+			const start = performance.now();
+			const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
+			const indexFilename = joinpath(schemaDir, "index.ts");
+			await write(indexFilename, index);
+			console.log(" Created schema index: %s \x1b[32m(%sms)\x1B[0m\n", indexFilename, time(start));
+		}
 	}
 
-	const fullIndex = join(gens.map(gen => gen.fullIndex(Object.values(schemas))));
-	const fullIndexFilename = `${out}/index.ts`;
-	await write(fullIndexFilename, fullIndex);
-	console.log("Created full index: %s", fullIndexFilename);
+	{
+		const start = performance.now();
+		const fullIndex = join(gens.map(gen => gen.fullIndex(Object.values(schemas))));
+		const fullIndexFilename = joinpath(out, "index.ts");
+		await write(fullIndexFilename, fullIndex);
+		console.log("Created full index: %s \x1b[32m(%sms)\x1B[0m", fullIndexFilename, time(start));
+	}
 
 	if (warnings.length > 0) {
 		console.log("\nWarnings generated:");
@@ -186,7 +206,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 };
 
 export async function generate(opts: TruePGConfig, generators?: createGenerator[]) {
-	const out = opts.out || "./models";
+	const out = normalise(opts.out || "./models");
 
 	if (!("uri" in opts) && !("config" in opts) && !("pg" in opts)) {
 		console.error(
@@ -200,7 +220,7 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	const start = performance.now();
 	const schemas = await extractor.extractSchemas();
 	const end = performance.now();
-	console.log("Extracted schemas in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));
+	console.log("Extracted schemas \x1b[32m(%sms)\x1b[0m\n", (end - start).toFixed(2));
 
 	console.info("Adapters enabled: %s\n", opts.adapters.join(", "));
 
@@ -209,13 +229,10 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 		if (!selected) throw new Error(`Requested adapter ${adapter} not found`);
 		return selected;
 	});
-	console.log("Clearing directory and generating schemas at '%s'", out);
+	console.log("Clearing directory and generating schemas at '%s'\n", out);
 	await rm(out, { recursive: true, force: true });
 	await mkdir(out, { recursive: true });
 	await multifile(generators, schemas, { ...opts, out });
 
-	{
-		const end = performance.now();
-		console.log("Completed in \x1b[32m%sms\x1b[0m", (end - start).toFixed(2));
-	}
+	console.log("Completed in \x1b[32m%sms\x1b[0m", time(start));
 }

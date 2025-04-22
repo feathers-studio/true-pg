@@ -138,6 +138,17 @@ export interface ExtractSchemaOptions {
 	onProgressEnd?: () => void;
 }
 
+const supported_kinds = [
+	"table",
+	"view",
+	"materializedView",
+	"enum",
+	"composite",
+	"function",
+	"domain",
+	"range",
+] as const;
+
 export class Extractor {
 	private db: DbAdapter;
 
@@ -234,13 +245,13 @@ export class Extractor {
 
 		const filtered = options?.typeFilter ? pgTypes.filter(element => options.typeFilter!(element)) : pgTypes;
 
-		const typesToExtract = filtered.filter(x => x.kind);
+		const typesToExtract = filtered.filter(x => supported_kinds.includes(x.kind));
 
-		const skipped = filtered.filter(x => !x.kind).map(x => x.name);
+		const skipped = filtered.filter(x => !supported_kinds.includes(x.kind)).map(x => `${x} (${x.kind})`);
 
 		if (skipped.length) {
 			console.warn("Skipping types of unsupported kinds:", skipped.join(", "));
-			console.warn("This is a bug!");
+			console.warn("This is a bug! Proceeding as if nothing happened.");
 		}
 
 		options?.onProgressStart?.(typesToExtract.length);

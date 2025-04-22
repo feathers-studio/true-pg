@@ -14,6 +14,18 @@ const time = (start: number) => {
 	return (end - start).toFixed(2);
 };
 
+const filter_overloaded_functions = (functions: FunctionDetails[]) => {
+	const counts = functions.reduce((acc, func) => {
+		acc[func.name] = (acc[func.name] ?? 0) + 1;
+		return acc;
+	}, {} as Record<string, number>);
+
+	return [
+		functions.filter(func => counts[func.name] === 1),
+		functions.filter(func => counts[func.name]! > 1),
+	] as const;
+};
+
 const filter_function = (func: FunctionDetails) => {
 	const typesToFilter = [
 		"pg_catalog.trigger",
@@ -48,6 +60,12 @@ const filter_function = (func: FunctionDetails) => {
 	}
 
 	return func;
+};
+
+const filter_unsupported_functions = (functions: FunctionDetails[]) => {
+	const filtered = functions.filter(filter_function);
+	const unsupported = filtered.filter(func => !filtered.includes(func));
+	return [filtered, unsupported] as const;
 };
 
 const write = (filename: string, file: string) => writeFile(filename, file + "\n");
@@ -96,16 +114,27 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 		const schemaDir = joinpath(out, schema.name);
 
-		// skip functions that cannot be represented in JavaScript
-		schema.functions = schema.functions.filter(filter_function);
+		const [supported_functions, unsupported_functions] = filter_unsupported_functions(schema.functions);
+		const [unique_functions, overloaded_functions] = filter_overloaded_functions(supported_functions);
+		schema.functions = unique_functions;
 
 		{
-			const skipped = schema.functions.filter(f => !filter_function(f));
-			const skipped_functions = skipped.map(f => `  - ${f.name}`).join("\n");
+			const skipped = unsupported_functions.map(f => `  - ${f.name}`);
 
 			if (skipped.length) {
 				warnings.push(
-					`Skipping ${skipped.length} functions because they cannot be represented in JavaScript (safe to ignore):\n${skipped_functions}`,
+					`Skipping ${skipped.length} functions not representable in JavaScript (safe to ignore):\n` +
+						skipped.join("\n"),
+				);
+			}
+		}
+
+		{
+			const skipped = overloaded_functions.map(f => `  - ${f.name}`);
+
+			if (skipped.length) {
+				warnings.push(
+					`Skipping ${skipped.length} overloaded functions (not supported):\n` + skipped.join("\n"),
 				);
 			}
 		}

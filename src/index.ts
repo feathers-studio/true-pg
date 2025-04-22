@@ -3,15 +3,30 @@ import type { FunctionDetails, Schema } from "./extractor/index.ts";
 import { rm, mkdir, writeFile } from "node:fs/promises";
 import { Nodes, allowed_kind_names, type FolderStructure, type createGenerator } from "./types.ts";
 import { existsSync } from "node:fs";
-import { join } from "./util.ts";
+import { join, parens } from "./util.ts";
 
 import { join as joinpath } from "node:path";
 import { type TruePGConfig, type ValidatedConfig, config, adapters } from "./config.ts";
 export { type TruePGConfig, type ValidatedConfig, config };
 
-const time = (start: number) => {
-	const end = performance.now();
-	return (end - start).toFixed(2);
+const NO_COLOR = Boolean(process.env.NO_COLOR || process.env.CI);
+const red = (str: string | number) => (NO_COLOR ? str : `\x1b[31m${str}\x1b[0m`);
+const green = (str: string | number) => (NO_COLOR ? str : `\x1b[32m${str}\x1b[0m`);
+const yellow = (str: string | number) => (NO_COLOR ? str : `\x1b[33m${str}\x1b[0m`);
+const blue = (str: string | number) => (NO_COLOR ? str : `\x1b[34m${str}\x1b[0m`);
+const bold = (str: string | number) => (NO_COLOR ? str : `\x1b[1m${str}\x1b[0m`);
+const underline = (str: string | number) => (NO_COLOR ? str : `\x1b[4m${str}\x1b[0m`);
+
+const THRESHOLD1 = 800;
+const THRESHOLD2 = 1500;
+const time = (start: number, addParens = true) => {
+	const diff = performance.now() - start;
+	const diffstr = diff.toFixed(2) + "ms";
+	const str = addParens ? parens(diffstr) : diffstr;
+
+	if (diff < THRESHOLD1) return green(str);
+	if (diff < THRESHOLD2) return yellow(str);
+	return red(str);
 };
 
 const filter_overloaded_functions = (functions: FunctionDetails[]) => {
@@ -70,10 +85,14 @@ const filter_unsupported_functions = (functions: FunctionDetails[]) => {
 	return [filtered, unsupported] as const;
 };
 
-const write = (filename: string, file: string) => writeFile(filename, file + "\n");
-
 const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: ValidatedConfig) => {
 	const { out } = opts;
+
+	let count = 0;
+	const write = async (filename: string, file: string) => {
+		await writeFile(filename, file + "\n");
+		count++;
+	};
 
 	const warnings: string[] = [];
 	const gens = generators.map(g => g({ ...opts, warnings }));
@@ -186,7 +205,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 				await write(filename, file);
 
-				console.log("  %s %s \x1b[32m(%sms)\x1B[0m", index, filename, time(start));
+				console.log("  %s %s %s", index, filename, time(start));
 			}
 
 			{
@@ -194,13 +213,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind, def_gen)));
 				const kindIndexFilename = joinpath(schemaDir, kind, "index.ts");
 				await write(kindIndexFilename, kindIndex);
+
 				const end = performance.now();
-				console.log(
-					"  ✅   Created %s index: %s \x1b[32m(%sms)\x1B[0m\n",
-					kind,
-					kindIndexFilename,
-					(end - start).toFixed(2),
-				);
+				console.log("  ✅   Created %s index: %s %s\n", kind, kindIndexFilename, time(start));
 			}
 		}
 
@@ -211,7 +226,8 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
 			const indexFilename = joinpath(schemaDir, "index.ts");
 			await write(indexFilename, index);
-			console.log(" Created schema index: %s \x1b[32m(%sms)\x1B[0m\n", indexFilename, time(start));
+
+			console.log(" Created schema index: %s %s\n", indexFilename, time(start));
 		}
 	}
 
@@ -220,13 +236,16 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		const fullIndex = join(gens.map(gen => gen.fullIndex(Object.values(schemas))));
 		const fullIndexFilename = joinpath(out, "index.ts");
 		await write(fullIndexFilename, fullIndex);
-		console.log("Created full index: %s \x1b[32m(%sms)\x1B[0m", fullIndexFilename, time(start));
+
+		console.log("Created full index: %s %s", fullIndexFilename, time(start));
 	}
 
 	if (warnings.length > 0) {
 		console.log("\nWarnings generated:");
 		console.log(warnings.map(warning => "* " + warning).join("\n"));
 	}
+
+	return count;
 };
 
 export async function generate(opts: TruePGConfig, generators?: createGenerator[]) {
@@ -237,8 +256,7 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 
 	const start = performance.now();
 	const schemas = await extractor.extractSchemas();
-	const end = performance.now();
-	console.log("Extracted schemas \x1b[32m(%sms)\x1b[0m\n", (end - start).toFixed(2));
+	console.log("Extracted schemas %s\n", time(start));
 
 	console.info("Adapters enabled: %s\n", validated.adapters.join(", "));
 
@@ -247,7 +265,8 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	console.log("Clearing directory and generating schemas at '%s'\n", out);
 	await rm(out, { recursive: true, force: true });
 	await mkdir(out, { recursive: true });
-	await multifile(generators, schemas, validated);
+	const count = await multifile(generators, schemas, validated);
 
-	console.log("Completed in \x1b[32m%sms\x1b[0m", time(start));
+	console.log("Completed in %s, %s generated.", time(start, false), bold(underline(blue(count + " files"))));
+	console.log();
 }

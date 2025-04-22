@@ -126,6 +126,8 @@ const isIdentifierInvalid = (str: string) => {
 	return invalid !== null;
 };
 
+export const parens = (str: string, type = "()"): string => `${type[0]!}${str}${type[1]!}`;
+
 export const quote = (str: string, using = '"') => `${using}${str.replaceAll(using, "\\" + using)}${using}`;
 
 export const quoteI = (str: string, using = '"') => (isIdentifierInvalid(str) ? quote(str, using) : str);

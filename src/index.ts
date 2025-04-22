@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { join, parens } from "./util.ts";
 
 import { join as joinpath } from "node:path";
-import { type TruePGConfig, type ValidatedConfig, config, adapters } from "./config.ts";
+import { type TruePGConfig, type ValidatedConfig, config, generators as builtin_generators } from "./config.ts";
 export { type TruePGConfig, type ValidatedConfig, config };
 
 const NO_COLOR = Boolean(process.env.NO_COLOR || process.env.CI);
@@ -258,9 +258,9 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	const schemas = await extractor.extractSchemas();
 	console.log("Extracted schemas %s\n", time(start));
 
-	console.info("Adapters enabled: %s\n", validated.adapters.join(", "));
+	console.info("Generators enabled: %s\n", validated.generators.join(", "));
 
-	generators = validated.adapters.map(adapter => adapters[adapter]).concat(generators ?? []);
+	generators = validated.generators.map(generator => builtin_generators[generator]).concat(generators ?? []);
 
 	console.log("Clearing directory and generating schemas at '%s'\n", out);
 	await rm(out, { recursive: true, force: true });

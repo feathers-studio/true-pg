@@ -171,7 +171,7 @@ export namespace Nodes {
 						return (
 							arr.findIndex(({ name: name2, canonical_type: int2 }) => {
 								return (
-									// adapter-assigned name
+									// generator-assigned name
 									name2 === name1 &&
 									// canonical type details
 									int2.name === int.name &&

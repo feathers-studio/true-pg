@@ -9,8 +9,8 @@ export type ExtractorConfig = Exclude<ConstructorParameters<typeof Extractor>[0]
 export interface BaseConfig {
 	/** The output directory for the generated models. Default: "models" */
 	out?: string;
-	/** Adapters to enable. Currently supported adapters are "kysely" and "zod". Default: ["kysely"] */
-	adapters?: ("kysely" | "zod")[];
+	/** Generators to enable. Currently supported generators are "kysely" and "zod". Default: ["kysely"] */
+	generators?: ("kysely" | "zod")[];
 	/** The default schema to use for the generated models. These will be unprefixed in the final `Database` interface. Default: "public" */
 	defaultSchema?: string;
 }
@@ -32,22 +32,22 @@ export interface ConfigConfig extends BaseConfig {
 
 export type TruePGConfig = Deunionise<PgConfig | UriConfig | ConfigConfig>;
 
-export const adapters = {
+export const generators = {
 	kysely: Kysely,
 	zod: Zod,
 };
 
-const availableAdapters = Object.keys(adapters) as (keyof typeof adapters)[];
+const availableGenerators = Object.keys(generators) as (keyof typeof generators)[];
 
 export function config(opts: TruePGConfig) {
 	const out = normalise(opts.out || "./models");
-	const adapters = opts.adapters || ["kysely"];
+	const generators = opts.generators || ["kysely"];
 	const defaultSchema = opts.defaultSchema || "public";
 
-	for (const adapter of opts.adapters ?? []) {
-		if (!availableAdapters.includes(adapter)) {
-			console.error('Requested adapter "%s" not found.', adapter);
-			console.error("Available adapters: %s", availableAdapters.join(", "));
+	for (const generator of opts.generators ?? []) {
+		if (!availableGenerators.includes(generator)) {
+			console.error('Requested generator "%s" not found.', generator);
+			console.error("Available generators: %s", availableGenerators.join(", "));
 			console.error("See documentation for more information.");
 			process.exit(1);
 		}
@@ -63,7 +63,7 @@ export function config(opts: TruePGConfig) {
 	return {
 		...opts,
 		out,
-		adapters,
+		generators,
 		defaultSchema,
 	};
 }

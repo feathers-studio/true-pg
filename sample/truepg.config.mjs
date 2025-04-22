@@ -14,6 +14,6 @@ await pg.exec(seed);
 
 export default config({
 	pg,
-	adapters: ["kysely", "zod"],
+	generators: ["kysely", "zod"],
 	out: "models/",
 });

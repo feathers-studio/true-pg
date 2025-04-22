@@ -15,7 +15,7 @@ bun add true-pg
 ## Quickstart
 
 ```bash
-npx true-pg --all-adapters --uri postgres://user:password@localhost:5432/database --out ./models
+npx true-pg --all-generators --uri postgres://user:password@localhost:5432/database --out ./models
 ```
 
 This will generate a `models` directory with the following structure:
@@ -68,8 +68,8 @@ Options:
 -   `-c, --config [path]` - Path to config file (JSON)
 -   `-u, --uri [uri]` - Database URI (Postgres only!)
 -   `-o, --out [path]` - Path to output directory (defaults to "models")
--   `-a, --adapter [adapter]` - Adapter to use (e.g. `kysely`, `zod`). Can be specified multiple times.
--   `-A, --all-adapters` - Enable all built-in adapters
+-   `-g, --generator [generator]` - Generator to use (e.g. `kysely`, `zod`). Can be specified multiple times.
+-   `-A, --all-generators` - Enable all built-in generators
 
 You can configure true-pg either through command-line arguments or a config file.
 
@@ -89,7 +89,7 @@ import { config } from "true-pg";
 export default config({
 	uri: "postgres://user:password@localhost:5432/database",
 	out: "src/models",
-	adapters: ["kysely", "zod"],
+	generators: ["kysely", "zod"],
 	defaultSchema: "public",
 });
 ```
@@ -101,7 +101,7 @@ export default config({
 | `uri`           | PostgreSQL connection URI                                | Required, or config |
 | `config`        | Knex connection config object                            | Required, or uri    |
 | `out`           | Output directory for generated files                     | `"models"`          |
-| `adapters`      | Adapters to use (e.g. `kysely`, `zod`)                   | `"kysely"`          |
+| `generators`    | Generators to use (e.g. `kysely`, `zod`)                 | `"kysely"`          |
 | `defaultSchema` | Default schema to use (Kysely schema will be unprefixed) | `"public"`          |
 
 ## Customising Code Generation
@@ -147,14 +147,14 @@ const generator = createGenerator(opts => ({
 await generate(
 	{
 		uri: "postgres://user:password@localhost:5432/database",
-		adapters: [], // empty array to disable adapters
+		generators: [], // empty array to disable generators
 		out: "src/models",
 	},
 	[generator],
 );
 ```
 
-Filenames will be created using the `format*` methods of the FIRST generator passed to `generate` or via the `--adapter` CLI option.
+Filenames will be created using the `format*` methods of the FIRST generator passed to `generate` or via the `--generator` CLI option.
 
 ## Schema Generator Interface
 

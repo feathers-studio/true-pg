@@ -2,7 +2,7 @@
 
 import mri from "mri";
 import { generate } from "./index.ts";
-import { adapters } from "./config.ts";
+import { generators } from "./config.ts";
 
 const args = process.argv.slice(2);
 const opts = mri<{
@@ -10,18 +10,18 @@ const opts = mri<{
 	"config"?: string;
 	"uri"?: string;
 	"out"?: string;
-	"adapter"?: string | string[];
-	"all-adapters"?: boolean;
+	"generator"?: string | string[];
+	"all-generators"?: boolean;
 }>(args, {
-	boolean: ["help", "all-adapters"],
-	string: ["config", "uri", "out", "adapter"],
+	boolean: ["help", "all-generators"],
+	string: ["config", "uri", "out", "generator"],
 	alias: {
 		h: "help",
 		c: "config",
 		u: "uri",
 		o: "out",
-		a: "adapter",
-		A: "all-adapters",
+		a: "generator",
+		A: "all-generators",
 	},
 });
 
@@ -46,27 +46,27 @@ if (help) {
 	log("  -h, --help                  Show help");
 	log("  -u, --uri      [uri]        Database URI (Postgres only!)");
 	log("  -o, --out      [path]       Path to output directory");
-	log("  -a, --adapter  [adapter]    Output adapter to use (default: 'kysely')");
-	log("  -A, --all-adapters          Output all adapters");
+	log("  -g, --generator  [generator]    Output generator to use (default: 'kysely')");
+	log("  -A, --all-generators          Output all generators");
 	log("  -c, --config   [path]       Path to config file");
 	log("                              Defaults to '.truepgrc.json' or '.config/.truepgrc.json'");
 	log("Example:");
-	log("  true-pg -u postgres://user:pass@localhost:5432/my-database -o models -a kysely -a zod");
+	log("  true-pg -u postgres://user:pass@localhost:5432/my-database -o models -g kysely -g zod");
 	log();
 	if (opts.help) process.exit(0);
 	else process.exit(1);
 }
 
-if (opts["all-adapters"]) opts.adapter = Object.keys(adapters);
+if (opts["all-generators"]) opts.generator = Object.keys(generators);
 
-if (!(opts.adapter || config.adapters)) console.warn('No adapters specified, using default: ["kysely"]');
+if (!(opts.generator || config.generators)) console.warn('No generators specified, using default: ["kysely"]');
 
-// allow single adapter or comma-separated list of adapters
-if (typeof opts.adapter === "string") opts.adapter = opts.adapter.split(",");
+// allow single generator or comma-separated list of generators
+if (typeof opts.generator === "string") opts.generator = opts.generator.split(",");
 
 // CLI args take precedence over config file
 config.uri = opts.uri ?? config.uri;
 config.out = opts.out ?? config.out;
-config.adapters = opts.adapter ?? config.adapters ?? ["kysely"];
+config.generators = opts.generator ?? config.generators ?? ["kysely"];
 
 await generate(config);

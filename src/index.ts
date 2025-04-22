@@ -22,7 +22,9 @@ const filter_overloaded_functions = (functions: FunctionDetails[]) => {
 
 	return [
 		functions.filter(func => counts[func.name] === 1),
-		functions.filter(func => counts[func.name]! > 1),
+		Object.entries(counts)
+			.filter(([_, count]) => count > 1)
+			.map(([name]) => name),
 	] as const;
 };
 
@@ -114,9 +116,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 		const schemaDir = joinpath(out, schema.name);
 
-		const [supported_functions, unsupported_functions] = filter_unsupported_functions(schema.functions);
-		const [unique_functions, overloaded_functions] = filter_overloaded_functions(supported_functions);
-		schema.functions = unique_functions;
+		const [unique_functions, overloaded_functions] = filter_overloaded_functions(schema.functions);
+		const [supported_functions, unsupported_functions] = filter_unsupported_functions(unique_functions);
+		schema.functions = supported_functions;
 
 		{
 			const skipped = unsupported_functions.map(f => `  - ${f.name}`);
@@ -130,7 +132,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		}
 
 		{
-			const skipped = overloaded_functions.map(f => `  - ${f.name}`);
+			const skipped = overloaded_functions.map(f => `  - ${f}`);
 
 			if (skipped.length) {
 				warnings.push(

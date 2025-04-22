@@ -7,31 +7,30 @@ import {
 	type TableColumn,
 	type ViewColumn,
 } from "../extractor/index.ts";
-import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
+import { allowed_kind_names, createGenerator, type SchemaGenerator } from "../types.ts";
+import { Import, ImportList } from "../imports.ts";
 import { builtins } from "./builtins.ts";
 import { toPascalCase, join, quote, quoteI, type Deunionise } from "../util.ts";
 
 export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 
-	const ky = (imports: Nodes.ImportList, name: string) =>
+	const ky = (imports: ImportList, name: string) =>
 		imports.add(
-			new Nodes.ExternalImport({
-				name,
-				module: "kysely",
+			new Import({
+				from: "kysely",
+				namedImports: [name],
 				typeOnly: true,
-				star: false,
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
+	const add = (imports: ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") return;
 		imports.add(
-			new Nodes.InternalImport({
-				name: generator.formatType(type),
-				canonical_type: type,
+			Import.fromInternal({
+				type,
+				withName: generator.formatType(type),
 				typeOnly: true,
-				star: false,
 			}),
 		);
 	};
@@ -40,7 +39,7 @@ export const Kysely = createGenerator(opts => {
 		/** "this" */
 		generator: SchemaGenerator,
 		/** @out Append used types to this array */
-		imports: Nodes.ImportList,
+		imports: ImportList,
 		/** Information about the column */
 		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
@@ -71,7 +70,7 @@ export const Kysely = createGenerator(opts => {
 
 	const composite_attribute = (
 		generator: SchemaGenerator,
-		imports: Nodes.ImportList,
+		imports: ImportList,
 		attr: Canonical.CompositeAttribute,
 	) => {
 		let out = quoteI(attr.name);

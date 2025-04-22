@@ -7,7 +7,8 @@ import {
 	type TableColumn,
 	type ViewColumn,
 } from "../extractor/index.ts";
-import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
+import { allowed_kind_names, createGenerator, type SchemaGenerator } from "../types.ts";
+import { Import, ImportList } from "../imports.ts";
 import { builtins } from "./builtins.ts";
 import { to_snake_case, join, quote, quoteI, type Deunionise } from "../util.ts";
 
@@ -15,31 +16,29 @@ import { to_snake_case, join, quote, quoteI, type Deunionise } from "../util.ts"
 export const Zod = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 
-	const zod = (imports: Nodes.ImportList, name?: string) =>
+	const zod = (imports: ImportList, name?: string) =>
 		imports.add(
-			new Nodes.ExternalImport({
-				name: name ?? "z",
-				module: "zod",
+			new Import({
+				from: "zod",
+				namedImports: name ? [name] : undefined,
 				typeOnly: false,
-				star: !name,
+				star: name ? undefined : "z",
 			}),
 		);
 
-	const add = (imports: Nodes.ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
+	const add = (imports: ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") zod(imports, "z");
 		else
 			imports.add(
-				new Nodes.InternalImport({
-					name: generator.formatType(type),
-					canonical_type: type,
-					typeOnly: false,
-					star: false,
+				Import.fromInternal({
+					type,
+					withName: generator.formatType(type),
 				}),
 			);
 	};
 
 	const column = (
-		imports: Nodes.ImportList,
+		imports: ImportList,
 		/** Information about the column */
 		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
@@ -57,7 +56,7 @@ export const Zod = createGenerator(opts => {
 		return `\t${out},\n`;
 	};
 
-	const composite_attribute = (imports: Nodes.ImportList, attr: Canonical.CompositeAttribute) => {
+	const composite_attribute = (imports: ImportList, attr: Canonical.CompositeAttribute) => {
 		let out = quoteI(attr.name);
 
 		out += `: ${generator.formatType(attr.type)}`;

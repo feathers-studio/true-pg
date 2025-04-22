@@ -1,3 +1,12 @@
+export const eq = <T>(a: T, b: T): boolean => {
+	if (a === b) return true;
+	if (a == null || b == null) return false;
+	if (typeof a !== "object" || typeof b !== "object") return false;
+
+	for (const key in a) if (!eq(a[key], b[key])) return false;
+	return true;
+};
+
 export const toPascalCase = (str: string) => {
 	let result = "";
 

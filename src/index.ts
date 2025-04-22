@@ -1,7 +1,8 @@
 import { Extractor, FunctionReturnTypeKind } from "./extractor/index.ts";
 import type { FunctionDetails, Schema } from "./extractor/index.ts";
 import { rm, mkdir, writeFile } from "node:fs/promises";
-import { Nodes, allowed_kind_names, type FolderStructure, type createGenerator } from "./types.ts";
+import { allowed_kind_names, type FolderStructure, type createGenerator } from "./types.ts";
+import { ImportList } from "./imports.ts";
 import { existsSync } from "node:fs";
 import { join, parens } from "./util.ts";
 
@@ -184,7 +185,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 				let file = "";
 
-				const imports = new Nodes.ImportList([]);
+				const imports = new ImportList([]);
 
 				if (item.kind === "table") file += join(gens.map(gen => gen.table(imports, item)));
 				if (item.kind === "view") file += join(gens.map(gen => gen.view(imports, item)));

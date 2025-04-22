@@ -1,11 +1,15 @@
-import { Client as Pg } from "pg";
+import { Client as PgClient, Pool as PgPool } from "pg";
 import { PGlite as Pglite } from "@electric-sql/pglite";
 
 export class DbAdapter {
-	constructor(private client: Pg | Pglite) {}
+	constructor(private client: PgClient | PgPool | Pglite, private external?: boolean) {}
 
 	async connect() {
-		if (this.client instanceof Pg) {
+		if (this.external) return;
+
+		if (this.client instanceof PgPool) {
+			// queries will automatically checkout a client and return it to the pool
+		} else if (this.client instanceof PgClient) {
 			return this.client.connect();
 		} else if (this.client instanceof Pglite) {
 			// Pglite doesn't have an explicit connect method
@@ -40,7 +44,11 @@ export class DbAdapter {
 	 * Close the connection if needed
 	 */
 	async close() {
-		if (this.client instanceof Pg) {
+		if (this.external) return;
+
+		if (this.client instanceof PgPool) {
+			this.client.end();
+		} else if (this.client instanceof PgClient) {
 			await this.client.end();
 		} else if (this.client instanceof Pglite) {
 			await this.client.close();

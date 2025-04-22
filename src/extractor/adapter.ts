@@ -1,4 +1,4 @@
-import * as Pg from "pg";
+import Pg from "pg";
 import { PGlite as Pglite } from "@electric-sql/pglite";
 
 export class DbAdapter {

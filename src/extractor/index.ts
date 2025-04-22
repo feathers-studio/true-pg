@@ -1,4 +1,5 @@
-import { Client as PgClient, Pool as PgPool, type ConnectionConfig } from "pg";
+import Pg from "pg";
+
 import { PGlite as Pglite } from "@electric-sql/pglite";
 import { DbAdapter } from "./adapter.ts";
 
@@ -143,11 +144,11 @@ export class Extractor {
 	/**
 	 * @param connectionConfig - Connection string or configuration object for Postgres connection
 	 */
-	constructor(opts: { pg?: PgClient | PgPool | Pglite; uri?: string; config?: ConnectionConfig }) {
+	constructor(opts: { pg?: Pg.Client | Pg.Pool | Pglite; uri?: string; config?: Pg.ConnectionConfig }) {
 		let pg;
 		if (opts.pg) pg = opts.pg;
-		else if (opts.uri) pg = new PgPool({ connectionString: opts.uri });
-		else if (opts.config) pg = new PgPool(opts.config);
+		else if (opts.uri) pg = new Pg.Pool({ connectionString: opts.uri });
+		else if (opts.config) pg = new Pg.Pool(opts.config);
 		else {
 			console.error(
 				"One of these options are required in your config file: pg, uri, config. See documentation for more information.",

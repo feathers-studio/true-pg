@@ -11,6 +11,7 @@
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
 		"verbatimModuleSyntax": true,
+		"esModuleInterop": true,
 
 		// Best practices
 		"strict": true,

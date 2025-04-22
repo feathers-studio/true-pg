@@ -1,7 +1,6 @@
 import {
 	FunctionReturnTypeKind,
 	type Canonical,
-	type FunctionReturnType,
 	type MaterializedViewColumn,
 	type TableColumn,
 	type ViewColumn,
@@ -25,18 +24,6 @@ export const Zod = createGenerator(opts => {
 			}),
 		);
 
-	const add = (ctx: GeneratorContext, type: Canonical | FunctionReturnType.ExistingTable) => {
-		if (type.schema === "pg_catalog") zod(ctx, "z");
-		else
-			ctx.imports.add(
-				Import.fromInternal({
-					source: ctx.source,
-					type,
-					withName: generator.formatType(ctx, type),
-				}),
-			);
-	};
-
 	const column = (
 		ctx: GeneratorContext,
 		/** Information about the column */
@@ -47,10 +34,9 @@ export const Zod = createGenerator(opts => {
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += quoteI(col.name);
-		let type = generator.formatType(ctx, col.type);
-		add(ctx, col.type);
-		if (col.type.dimensions > 0) type += ".array()".repeat(col.type.dimensions);
-		if (col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue) type += `.nullable().optional()`;
+		const nullable = col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue;
+		let type = generator.formatType(ctx, col.type, { nullable });
+		if (nullable) type += `.optional()`;
 		out += `: ${type}`;
 
 		return `\t${out},\n`;
@@ -59,10 +45,8 @@ export const Zod = createGenerator(opts => {
 	const composite_attribute = (ctx: GeneratorContext, attr: Canonical.CompositeAttribute) => {
 		let out = quoteI(attr.name);
 
-		out += `: ${generator.formatType(ctx, attr.type)}`;
-		add(ctx, attr.type);
-		if (attr.type.dimensions > 0) out += ".array()".repeat(attr.type.dimensions);
-		if (attr.isNullable) out += ".nullable().optional()";
+		out += `: ${generator.formatType(ctx, attr.type, { nullable: attr.isNullable })}`;
+		if (attr.isNullable) out += ".optional()";
 
 		return out;
 	};
@@ -76,19 +60,46 @@ export const Zod = createGenerator(opts => {
 			return to_snake_case(type.name);
 		},
 
-		formatType(ctx, type) {
+		formatType(ctx, type, attr) {
+			let base;
+
 			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
-				return to_snake_case(type.name);
+				base = to_snake_case(type.name);
 			} else if (type.schema === "pg_catalog") {
 				const name = type.canonical_name;
 				const format = builtins[name];
-				if (format) return format;
-				opts?.warnings?.add(
-					`(zod) Unknown builtin type: ${name}. Pass 'meta.zod.builtinMap' to map this type. Defaulting to "z.unknown()".`,
+				if (format) base = format;
+				else {
+					opts?.warnings?.add(
+						`(zod) Unknown builtin type: ${name}. Pass 'zod.builtinMap' to map this type. Defaulting to "z.unknown()".`,
+					);
+					base = "z.unknown()";
+				}
+			} else base = to_snake_case(type.name);
+
+			if (type.schema === "pg_catalog") {
+				ctx.imports.add(
+					new Import({
+						from: "zod",
+						namedImports: ["z"],
+					}),
 				);
-				return "z.unknown()";
+			} else {
+				// before adding modifiers, add the import
+				ctx.imports.add(
+					Import.fromInternal({
+						source: ctx.source,
+						type,
+						withName: base,
+						typeOnly: false,
+					}),
+				);
 			}
-			return to_snake_case(type.name);
+
+			if ("dimensions" in type) base += ".array()".repeat(type.dimensions);
+			if (attr?.nullable) base += ".nullable()";
+
+			return base;
 		},
 
 		table(ctx, table) {
@@ -144,6 +155,7 @@ export const Zod = createGenerator(opts => {
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
 			out += `export const ${this.formatSchemaMemberName(type)} = z.object({\n`;
+			zod(ctx, "z");
 
 			const props = type.canonical.attributes.map(c => composite_attribute(ctx, c)).map(t => `\t${t},`);
 			out += props.join("\n");
@@ -158,7 +170,6 @@ export const Zod = createGenerator(opts => {
 				ctx,
 				type.canonical.domain_base_type,
 			)};`;
-			zod(ctx, "z");
 			return out;
 		},
 
@@ -186,10 +197,8 @@ export const Zod = createGenerator(opts => {
 
 				for (const param of inputParams) {
 					// TODO: update imports for non-primitive types based on typeInfo.kind
-					out += "\t\t" + this.formatType(ctx, param.type);
-					add(ctx, param.type);
-					if (param.type.dimensions > 0) out += ".array()".repeat(param.type.dimensions);
-					if (param.hasDefault) out += ".nullable().optional()";
+					out += "\t\t" + this.formatType(ctx, param.type, { nullable: param.hasDefault });
+					if (param.hasDefault) out += ".optional()";
 					out += `, // ${param.name}\n`;
 				}
 
@@ -199,9 +208,8 @@ export const Zod = createGenerator(opts => {
 			const variadic = type.parameters.find(p => p.mode === "VARIADIC");
 			if (variadic) {
 				out += ".rest(";
-				out += this.formatType(ctx, variadic.type);
 				// reduce by 1 because it's already a rest parameter
-				if (variadic.type.dimensions > 1) out += ".array()".repeat(variadic.type.dimensions - 1);
+				out += this.formatType(ctx, { ...variadic.type, dimensions: variadic.type.dimensions - 1 });
 				out += ")" + ", // " + variadic.name + "\n";
 			} else out += ",\n";
 
@@ -211,29 +219,24 @@ export const Zod = createGenerator(opts => {
 				if (type.returnType.columns.length === 0) out += "z.void()/* RETURNS TABLE with no columns */";
 				else {
 					out += "z.object({\n";
+					zod(ctx, "z");
 					for (const col of type.returnType.columns) {
 						out += `\t\t"${col.name}": `;
-						out += this.formatType(ctx, col.type);
-						add(ctx, col.type);
-						if (col.type.dimensions > 0) out += ".array()".repeat(col.type.dimensions);
+						out += this.formatType(ctx, col.type); // ignore nullability of inline table columns
 						out += `,\n`;
 					}
 					out += "\t})";
 				}
 			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
 				out += this.formatType(ctx, type.returnType);
-				add(ctx, type.returnType);
 			} else {
 				out += this.formatType(ctx, type.returnType.type);
-				add(ctx, type.returnType.type);
-				if (type.returnType.type.dimensions > 0) out += ".array()".repeat(type.returnType.type.dimensions);
 			}
 
 			// Add additional array brackets if it returns a set
 			if (type.returnType.isSet) out += ".array()";
 			out += ",\n};";
 
-			zod(ctx, "z");
 			return out;
 		},
 

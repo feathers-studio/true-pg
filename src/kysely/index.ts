@@ -24,18 +24,6 @@ export const Kysely = createGenerator(opts => {
 		);
 	};
 
-	const add = (ctx: GeneratorContext, type: Canonical | FunctionReturnType.ExistingTable) => {
-		if (type.schema === "pg_catalog") return;
-		ctx.imports.add(
-			Import.fromInternal({
-				source: ctx.source,
-				type,
-				withName: generator.formatType(ctx, type),
-				typeOnly: true,
-			}),
-		);
-	};
-
 	const column = (
 		/** "this" */
 		generator: SchemaGenerator,
@@ -43,8 +31,7 @@ export const Kysely = createGenerator(opts => {
 		/** Information about the column */
 		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
-		let base = generator.formatType(ctx, col.type);
-		if (col.isNullable) base += " | null";
+		let base = generator.formatType(ctx, col.type, { nullable: col.isNullable });
 
 		let qualified = base;
 		if (col.generated === "ALWAYS") {
@@ -62,7 +49,6 @@ export const Kysely = createGenerator(opts => {
 		out += quoteI(col.name);
 		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
-		add(ctx, col.type);
 
 		return `\t${out};\n`;
 	};
@@ -75,9 +61,8 @@ export const Kysely = createGenerator(opts => {
 		let out = quoteI(attr.name);
 
 		if (attr.isNullable) out += "?";
-		out += `: ${generator.formatType(ctx, attr.type)}`;
-		add(ctx, attr.type);
-		if (attr.isNullable) out += " | null";
+		out += ": ";
+		out += generator.formatType(ctx, attr.type, { nullable: attr.isNullable });
 
 		return out;
 	};
@@ -107,6 +92,18 @@ export const Kysely = createGenerator(opts => {
 					base = "unknown";
 				}
 			} else base = toPascalCase(type.name);
+
+			if (type.schema !== "pg_catalog") {
+				// before adding modifiers, add the import
+				ctx.imports.add(
+					Import.fromInternal({
+						source: ctx.source,
+						type,
+						withName: base,
+						typeOnly: true,
+					}),
+				);
+			}
 
 			if ("dimensions" in type) base += "[]".repeat(type.dimensions);
 			if (attr?.nullable) base += " | null";
@@ -204,7 +201,6 @@ export const Kysely = createGenerator(opts => {
 				out += inputParams[0]!.name;
 				out += ": ";
 				out += this.formatType(ctx, inputParams[0]!.type);
-				add(ctx, inputParams[0]!.type);
 				out += "): ";
 			} else if (inputParams.length > 0) {
 				out += "(\n";
@@ -217,7 +213,6 @@ export const Kysely = createGenerator(opts => {
 					out += `\t\t${paramName}`;
 					if (param.hasDefault && !isVariadic) out += "?";
 					out += `: ${this.formatType(ctx, param.type)}`;
-					add(ctx, param.type);
 					if (!isVariadic) out += ",";
 					out += "\n";
 				}
@@ -232,17 +227,14 @@ export const Kysely = createGenerator(opts => {
 					for (const col of type.returnType.columns) {
 						out += `\t\t"${col.name}": `;
 						out += this.formatType(ctx, col.type);
-						add(ctx, col.type);
 						out += `;\n`;
 					}
 					out += "\t}";
 				}
 			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
 				out += this.formatType(ctx, type.returnType);
-				add(ctx, type.returnType);
 			} else {
 				out += this.formatType(ctx, type.returnType.type);
-				add(ctx, type.returnType.type);
 			}
 
 			// Add additional array brackets if it returns a set

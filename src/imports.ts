@@ -30,7 +30,7 @@ export class Import {
 		this.namedImports = args.namedImports;
 		this.star = args.star;
 		this.default = args.default;
-		this.typeOnly = args.typeOnly;
+		this.typeOnly = args.typeOnly ?? false;
 	}
 
 	static fromInternal(opts: {

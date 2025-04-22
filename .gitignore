@@ -4,7 +4,7 @@ node_modules
 # output
 lib
 out
-models/
+./models/
 staging/
 dist
 *.tgz

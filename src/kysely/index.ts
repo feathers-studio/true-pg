@@ -9,15 +9,7 @@ import {
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join, quote, quoteI, type Deunionise } from "../util.ts";
-
-const toPascalCase = (str: string) =>
-	str
-		.replace(/^[^a-zA-Z]+/, "") // remove leading non-alphabetic characters
-		.replace(/[^a-zA-Z0-9_]+/g, "") // remove non-alphanumeric/underscore characters
-		.replace(" ", "_") // replace spaces with underscores
-		.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()) // capitalize letters after underscores
-		.replace(/^([a-z])/, (_, letter) => letter.toUpperCase()); // capitalize first letter
+import { toPascalCase, join, quote, quoteI, type Deunionise } from "../util.ts";
 
 export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";

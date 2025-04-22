@@ -9,16 +9,9 @@ import {
 } from "../extractor/index.ts";
 import { allowed_kind_names, createGenerator, Nodes, type SchemaGenerator } from "../types.ts";
 import { builtins } from "./builtins.ts";
-import { join, quote, quoteI, type Deunionise } from "../util.ts";
+import { to_snake_case, join, quote, quoteI, type Deunionise } from "../util.ts";
 
-const to_snake_case = (str: string) =>
-	str
-		.replace(/^[^a-zA-Z]+/, "") // remove leading non-alphabetic characters
-		.replace(/[^a-zA-Z0-9]+/g, "_") // replace non-alphanumeric characters with underscores
-		.replace(/([A-Z])/g, "_$1") // insert underscores before uppercase letters
-		.toLowerCase();
-
-// TODO: create an insert and update zod interface for each type
+// TODO: create an insert and update zod interface for each type?
 export const Zod = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 

@@ -1,6 +1,6 @@
 {
 	"name": "true-pg",
-	"version": "0.4.5",
+	"version": "0.5.0",
 	"type": "module",
 	"module": "lib/index.js",
 	"main": "lib/index.js",

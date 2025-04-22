@@ -1,3 +1,112 @@
+export const toPascalCase = (str: string) => {
+	let result = "";
+
+	let index = 0;
+	let space = false;
+	let leading = true;
+	const len = str.length;
+	while (index < len) {
+		const char = str[index]!;
+
+		// keep trailing underscores
+		if (index === len - 1 && char === "_") {
+			// iterate backwards until a non-underscore character is found
+			let index = len - 1;
+			while (index >= 0 && str[index]! === "_") {
+				result += "_";
+				index--;
+			}
+
+			break;
+		}
+
+		if (leading) {
+			if (char === "_") {
+				result += char;
+			} else if (/[a-zA-Z]/.test(char)) {
+				result += char.toUpperCase();
+				leading = false;
+			} else {
+				// skip leading non-alphabetic characters
+			}
+		} else if (/[a-zA-Z0-9]/.test(char)) {
+			// valid characters
+			if (space) result += char.toUpperCase();
+			else result += char;
+			space = false;
+		} else {
+			// invalid characters, space, underscore, or hyphen
+			// treat as space
+			space = true;
+		}
+
+		index++;
+	}
+
+	return result;
+};
+
+export const to_snake_case = (str: string) => {
+	let result = "";
+
+	let index = 0;
+	let space = false;
+	let leading = true;
+	let upper = false;
+	const len = str.length;
+	while (index < len) {
+		const char = str[index]!;
+
+		// keep trailing underscores
+		if (index === len - 1 && char === "_") {
+			// iterate backwards until a non-underscore character is found
+			let index = len - 1;
+			while (index >= 0 && str[index]! === "_") {
+				result += "_";
+				index--;
+			}
+
+			break;
+		}
+
+		if (leading) {
+			if (char === "_") {
+				result += char;
+			} else if (/[A-Z]/.test(char)) {
+				result += char.toLowerCase();
+				leading = false;
+				upper = true;
+			} else if (/[a-z]/.test(char)) {
+				result += char.toLowerCase();
+				leading = false;
+			} else {
+				// skip leading non-alphabetic characters
+			}
+		} else if (/[A-Z]/.test(char)) {
+			if (!upper) result += "_";
+			if (space) result += "_";
+			// uppercase characters
+			result += char.toLowerCase();
+			space = false;
+			upper = true;
+		} else if (/[a-z0-9]/.test(char)) {
+			// valid characters
+			if (space) result += "_";
+			result += char;
+			space = false;
+			upper = false;
+		} else {
+			// invalid characters, space, underscore, or hyphen
+			// treat as space
+			space = true;
+		}
+
+		index++;
+	}
+
+	return result;
+};
+
 export const join = (parts: Iterable<string>, joiner = "\n\n") => Array.from(parts).filter(Boolean).join(joiner);
 
 export type UnionKeys<T> = T extends unknown ? keyof T : never;

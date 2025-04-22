@@ -84,8 +84,8 @@ export const Zod = createGenerator(opts => {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) return format;
-				opts?.warnings?.push(
-					`(zod) Unknown builtin type: ${name}. Pass customBuiltinMap to map this type. Defaulting to "z.unknown()".`,
+				opts?.warnings?.add(
+					`(zod) Unknown builtin type: ${name}. Pass 'zod.builtinMap' to map this type. Defaulting to "z.unknown()".`,
 				);
 				return "z.unknown()";
 			}

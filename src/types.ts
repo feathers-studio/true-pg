@@ -244,7 +244,7 @@ export namespace Nodes {
 
 export interface CreateGeneratorOpts {
 	defaultSchema?: string;
-	warnings: string[];
+	warnings: Set<string>;
 }
 
 export interface createGenerator {

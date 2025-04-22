@@ -30,6 +30,7 @@ CREATE TABLE users (
     email email NOT NULL, -- Using the email domain
     role user_role NOT NULL DEFAULT 'customer', -- Using the user_role enum
     shipping_address address, -- Using the address composite type
+    unknown_column pg_catalog.oidvector, -- This exists to test that the extractor can handle types that don't have a default mapping
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -42,6 +43,7 @@ CREATE TABLE products (
     stock_quantity INT CHECK (stock_quantity >= 0) DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     validity validity_period, -- Using the validity_period range type
+    unknown_column pg_catalog.oidvector, -- This exists to test that the extractor can handle types that don't have a default mapping
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -52,6 +54,7 @@ CREATE TABLE orders (
     order_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     status order_status NOT NULL DEFAULT 'pending', -- Using the order_status enum
     shipping_address address, -- Using the address composite type (could be copied from user or specified per order)
+    unknown_column pg_catalog.oidvector, -- This exists to test that the extractor can handle types that don't have a default mapping
     total_amount positive_numeric -- This could be calculated or updated later
 );
 

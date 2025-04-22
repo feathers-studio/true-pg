@@ -11,6 +11,7 @@ export interface Orders {
 	order_date: Generated<Date | null>;
 	status: Generated<OrderStatus>;
 	shipping_address: Address | null;
+	unknown_column: unknown | null;
 	total_amount: PositiveNumeric | null;
 }
 
@@ -20,5 +21,6 @@ export const orders = z.object({
 	order_date: z.coerce.date().nullable().optional(),
 	status: order_status.nullable().optional(),
 	shipping_address: address.nullable().optional(),
+	unknown_column: z.unknown().nullable().optional(),
 	total_amount: positive_numeric.nullable().optional(),
 });

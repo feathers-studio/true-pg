@@ -94,7 +94,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		count++;
 	};
 
-	const warnings: string[] = [];
+	const warnings: Set<string> = new Set();
 	const gens = generators.map(g => g({ ...opts, warnings }));
 	const def_gen = gens[0]!;
 
@@ -143,7 +143,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			const skipped = unsupported_functions.map(f => `  - ${f.name}`);
 
 			if (skipped.length) {
-				warnings.push(
+				warnings.add(
 					`Skipping ${skipped.length} functions not representable in JavaScript (safe to ignore):\n` +
 						skipped.join("\n"),
 				);
@@ -154,9 +154,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			const skipped = overloaded_functions.map(f => `  - ${f}`);
 
 			if (skipped.length) {
-				warnings.push(
-					`Skipping ${skipped.length} overloaded functions (not supported):\n` + skipped.join("\n"),
-				);
+				warnings.add(`Skipping ${skipped.length} overloaded functions (not supported):\n` + skipped.join("\n"));
 			}
 		}
 
@@ -176,7 +174,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				const exists = await existsSync(filename);
 
 				if (exists) {
-					warnings.push(
+					warnings.add(
 						`Skipping ${item.kind} "${item.name}": formatted name clashes. Wanted to create ${filename}`,
 					);
 					continue;
@@ -240,9 +238,11 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 		console.log("Created full index: %s %s", fullIndexFilename, time(start));
 	}
 
-	if (warnings.length > 0) {
+	if (warnings.size > 0) {
 		console.log("\nWarnings generated:");
-		console.log(warnings.map(warning => "* " + warning).join("\n"));
+		for (const warning of warnings) {
+			console.log("* " + warning);
+		}
 	}
 
 	return count;

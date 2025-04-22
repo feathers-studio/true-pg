@@ -12,6 +12,7 @@ export interface Products {
 	stock_quantity: Generated<number | null>;
 	is_active: Generated<boolean | null>;
 	validity: ValidityPeriod | null;
+	unknown_column: unknown | null;
 	created_at: Generated<Date | null>;
 }
 
@@ -23,5 +24,6 @@ export const products = z.object({
 	stock_quantity: z.number().nullable().optional(),
 	is_active: z.boolean().nullable().optional(),
 	validity: validity_period.nullable().optional(),
+	unknown_column: z.unknown().nullable().optional(),
 	created_at: z.coerce.date().nullable().optional(),
 });

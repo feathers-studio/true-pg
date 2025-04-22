@@ -101,8 +101,8 @@ export const Kysely = createGenerator(opts => {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) return format;
-				opts?.warnings?.push(
-					`(kysely) Unknown builtin type: ${name}. Pass customBuiltinMap to map this type. Defaulting to "unknown".`,
+				opts?.warnings?.add(
+					`(kysely) Unknown builtin type: ${name}. Pass 'kysely.builtinMap' to map this type. Defaulting to "unknown".`,
 				);
 				return "unknown";
 			}

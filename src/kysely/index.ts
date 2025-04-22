@@ -3,33 +3,34 @@ import {
 	FunctionReturnTypeKind,
 	type FunctionReturnType,
 	type MaterializedViewColumn,
-	type Schema,
 	type TableColumn,
 	type ViewColumn,
 } from "../extractor/index.ts";
-import { allowed_kind_names, createGenerator, type SchemaGenerator } from "../types.ts";
-import { Import, ImportList } from "../imports.ts";
+import { allowed_kind_names, createGenerator, type GeneratorContext, type SchemaGenerator } from "../types.ts";
+import { Import } from "../imports.ts";
 import { builtins } from "./builtins.ts";
 import { toPascalCase, join, quote, quoteI, type Deunionise } from "../util.ts";
 
 export const Kysely = createGenerator(opts => {
 	const defaultSchema = opts?.defaultSchema ?? "public";
 
-	const ky = (imports: ImportList, name: string) =>
-		imports.add(
+	const ky = (ctx: GeneratorContext, name: string) => {
+		ctx.imports.add(
 			new Import({
 				from: "kysely",
 				namedImports: [name],
 				typeOnly: true,
 			}),
 		);
+	};
 
-	const add = (imports: ImportList, type: Canonical | FunctionReturnType.ExistingTable) => {
+	const add = (ctx: GeneratorContext, type: Canonical | FunctionReturnType.ExistingTable) => {
 		if (type.schema === "pg_catalog") return;
-		imports.add(
+		ctx.imports.add(
 			Import.fromInternal({
+				source: ctx.source,
 				type,
-				withName: generator.formatType(type),
+				withName: generator.formatType(ctx, type),
 				typeOnly: true,
 			}),
 		);
@@ -38,141 +39,149 @@ export const Kysely = createGenerator(opts => {
 	const column = (
 		/** "this" */
 		generator: SchemaGenerator,
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the column */
 		col: Deunionise<TableColumn | ViewColumn | MaterializedViewColumn>,
 	) => {
-		let base = generator.formatType(col.type);
-		if (col.type.dimensions > 0) base += "[]".repeat(col.type.dimensions);
+		let base = generator.formatType(ctx, col.type);
 		if (col.isNullable) base += " | null";
 
 		let qualified = base;
 		if (col.generated === "ALWAYS") {
 			qualified = `GeneratedAlways<${qualified}>`;
-			ky(imports, "GeneratedAlways");
+			ky(ctx, "GeneratedAlways");
 		} else if (col.generated === "BY DEFAULT") {
 			qualified = `Generated<${qualified}>`;
-			ky(imports, "Generated");
+			ky(ctx, "Generated");
 		} else if (col.defaultValue) {
 			qualified = `Generated<${qualified}>`;
-			ky(imports, "Generated");
+			ky(ctx, "Generated");
 		}
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += quoteI(col.name);
 		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
-		add(imports, col.type);
+		add(ctx, col.type);
 
 		return `\t${out};\n`;
 	};
 
 	const composite_attribute = (
+		ctx: GeneratorContext,
 		generator: SchemaGenerator,
-		imports: ImportList,
 		attr: Canonical.CompositeAttribute,
 	) => {
 		let out = quoteI(attr.name);
 
 		if (attr.isNullable) out += "?";
-		out += `: ${generator.formatType(attr.type)}`;
-		add(imports, attr.type);
-		if (attr.type.dimensions > 0) out += "[]".repeat(attr.type.dimensions);
+		out += `: ${generator.formatType(ctx, attr.type)}`;
+		add(ctx, attr.type);
 		if (attr.isNullable) out += " | null";
 
 		return out;
 	};
 
 	const generator: SchemaGenerator = {
-		formatSchema(name) {
+		formatSchemaName(name) {
 			return toPascalCase(name) + "Schema";
 		},
 
-		formatSchemaType(type) {
+		formatSchemaMemberName(type) {
 			return toPascalCase(type.name);
 		},
 
-		formatType(type) {
+		formatType(ctx, type, attr) {
+			let base;
+
 			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
-				return toPascalCase(type.name);
+				base = toPascalCase(type.name);
 			} else if (type.schema === "pg_catalog") {
 				const name = type.canonical_name;
 				const format = builtins[name];
-				if (format) return format;
-				opts?.warnings?.add(
-					`(kysely) Unknown builtin type: ${name}. Pass 'kysely.builtinMap' to map this type. Defaulting to "unknown".`,
-				);
-				return "unknown";
-			}
-			return toPascalCase(type.name);
+				if (format) base = format;
+				else {
+					opts?.warnings?.add(
+						`(kysely) Unknown builtin type: ${name}. Pass 'kysely.builtinMap' to map this type. Defaulting to "unknown".`,
+					);
+					base = "unknown";
+				}
+			} else base = toPascalCase(type.name);
+
+			if ("dimensions" in type) base += "[]".repeat(type.dimensions);
+			if (attr?.nullable) base += " | null";
+
+			return base;
 		},
 
-		table(imports, table) {
+		table(ctx, table) {
 			let out = "";
 
 			if (table.comment) out += `/** ${table.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(table)} {\n`;
-			for (const col of table.columns) out += column(this, imports, col);
+			out += `export interface ${this.formatSchemaMemberName(table)} {\n`;
+			for (const col of table.columns) out += column(this, ctx, col);
 			out += "}";
 
 			return out;
 		},
 
-		view(imports, view) {
+		view(ctx, view) {
 			let out = "";
 			if (view.comment) out += `/** ${view.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(view)} {\n`;
-			for (const col of view.columns) out += column(this, imports, col);
+			out += `export interface ${this.formatSchemaMemberName(view)} {\n`;
+			for (const col of view.columns) out += column(this, ctx, col);
 			out += "}";
 
 			return out;
 		},
 
-		materializedView(imports, materializedView) {
+		materializedView(ctx, materializedView) {
 			let out = "";
 			if (materializedView.comment) out += `/** ${materializedView.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(materializedView)} {\n`;
-			for (const col of materializedView.columns) out += column(this, imports, col);
+			out += `export interface ${this.formatSchemaMemberName(materializedView)} {\n`;
+			for (const col of materializedView.columns) out += column(this, ctx, col);
 			out += "}";
 
 			return out;
 		},
 
-		enum(imports, en) {
+		enum(ctx, en) {
 			let out = "";
 			if (en.comment) out += `/** ${en.comment} */\n`;
-			out += `export type ${this.formatSchemaType(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
+			out += `export type ${this.formatSchemaMemberName(en)} = ${en.values.map(v => `"${v}"`).join(" | ")};`;
 			return out;
 		},
 
-		composite(imports, type) {
+		composite(ctx, type) {
 			let out = "";
 
 			if (type.comment) out += `/** ${type.comment} */\n`;
-			out += `export interface ${this.formatSchemaType(type)} {\n`;
+			out += `export interface ${this.formatSchemaMemberName(type)} {\n`;
 
-			const props = type.canonical.attributes.map(c => composite_attribute(this, imports, c)).map(t => `\t${t};`);
+			const props = type.canonical.attributes.map(c => composite_attribute(ctx, this, c)).map(t => `\t${t};`);
 			out += props.join("\n");
 			out += "\n}";
 
 			return out;
 		},
 
-		domain(imports, type) {
+		domain(ctx, type) {
 			let out = "";
-			out += `export type ${this.formatSchemaType(type)} = ${this.formatType(type.canonical.domain_base_type)};`;
+			out += `export type ${this.formatSchemaMemberName(type)} = ${this.formatType(
+				ctx,
+				type.canonical.domain_base_type,
+			)};`;
 			return out;
 		},
 
-		range(imports, type) {
+		range(ctx, type) {
 			let out = "";
 			// force this to be string because range has to be passed as a string to Kysely
-			out += `export type ${this.formatSchemaType(type)} = string;`;
+			out += `export type ${this.formatSchemaMemberName(type)} = string;`;
 			return out;
 		},
 
-		function(imports, type) {
+		function(ctx, type) {
 			let out = "";
 
 			out += "/**\n";
@@ -181,7 +190,7 @@ export const Kysely = createGenerator(opts => {
 			out += ` * @parallelSafety ${type.parallelSafety}\n`;
 			out += ` * @isStrict ${type.isStrict}\n`;
 			out += " */\n";
-			out += `export interface ${this.formatSchemaType(type)} {\n\t`;
+			out += `export interface ${this.formatSchemaMemberName(type)} {\n\t`;
 
 			// Get the input parameters (those that appear in function signature)
 			const inputParams = type.parameters.filter(
@@ -194,9 +203,8 @@ export const Kysely = createGenerator(opts => {
 				out += "(";
 				out += inputParams[0]!.name;
 				out += ": ";
-				out += this.formatType(inputParams[0]!.type);
-				add(imports, inputParams[0]!.type);
-				if (inputParams[0]!.type.dimensions > 0) out += "[]".repeat(inputParams[0]!.type.dimensions);
+				out += this.formatType(ctx, inputParams[0]!.type);
+				add(ctx, inputParams[0]!.type);
 				out += "): ";
 			} else if (inputParams.length > 0) {
 				out += "(\n";
@@ -208,9 +216,8 @@ export const Kysely = createGenerator(opts => {
 
 					out += `\t\t${paramName}`;
 					if (param.hasDefault && !isVariadic) out += "?";
-					out += `: ${this.formatType(param.type)}`;
-					add(imports, param.type);
-					if (param.type.dimensions > 0) out += "[]".repeat(param.type.dimensions);
+					out += `: ${this.formatType(ctx, param.type)}`;
+					add(ctx, param.type);
 					if (!isVariadic) out += ",";
 					out += "\n";
 				}
@@ -224,20 +231,18 @@ export const Kysely = createGenerator(opts => {
 					out += "{\n";
 					for (const col of type.returnType.columns) {
 						out += `\t\t"${col.name}": `;
-						out += this.formatType(col.type);
-						add(imports, col.type);
-						if (col.type.dimensions > 0) out += "[]".repeat(col.type.dimensions);
+						out += this.formatType(ctx, col.type);
+						add(ctx, col.type);
 						out += `;\n`;
 					}
 					out += "\t}";
 				}
 			} else if (type.returnType.kind === FunctionReturnTypeKind.ExistingTable) {
-				out += this.formatType(type.returnType);
-				add(imports, type.returnType);
+				out += this.formatType(ctx, type.returnType);
+				add(ctx, type.returnType);
 			} else {
-				out += this.formatType(type.returnType.type);
-				add(imports, type.returnType.type);
-				if (type.returnType.type.dimensions > 0) out += "[]".repeat(type.returnType.type.dimensions);
+				out += this.formatType(ctx, type.returnType.type);
+				add(ctx, type.returnType.type);
 			}
 
 			// Add additional array brackets if it returns a set
@@ -250,26 +255,27 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 
-		schemaKindIndex(schema, kind, main_generator) {
+		schemaKindIndex(ctx, schema, kind, main_generator) {
 			const generator = main_generator ?? this;
 			const imports = schema[kind];
 			if (imports.length === 0) return "";
 
 			return imports
 				.map(each => {
-					const name = this.formatSchemaType(each);
-					const file = generator.formatSchemaType(each);
+					const name = generator.formatSchemaMemberName(each);
+					const file = generator.formatSchemaMemberName(each);
 					return `export type { ${name} } from "./${file}.ts";`;
 				})
 				.join("\n");
 		},
 
-		schemaIndex(schema) {
+		schemaIndex(ctx, schema) {
 			const actual_kinds = allowed_kind_names.filter(kind => schema[kind].length);
+			// we could in theory use the imports from GeneratorContext here, but this works fine
 			let out = actual_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
 
 			out += "\n\n";
-			out += `export interface ${this.formatSchema(schema.name)} {\n`;
+			out += `export interface ${this.formatSchemaName(schema.name)} {\n`;
 
 			for (const kind of actual_kinds) {
 				const items = schema[kind];
@@ -279,7 +285,7 @@ export const Kysely = createGenerator(opts => {
 
 				const formatted = items
 					.map(each => {
-						const formatted = this.formatSchemaType(each);
+						const formatted = generator.formatSchemaMemberName(each);
 						return { ...each, formatted };
 					})
 					.filter(x => x !== undefined);
@@ -298,12 +304,12 @@ export const Kysely = createGenerator(opts => {
 			return out;
 		},
 
-		fullIndex(schemas: Schema[]) {
+		fullIndex(ctx, schemas) {
 			const parts: string[] = [];
 
 			parts.push(
 				schemas
-					.map(s => `import type { ${this.formatSchema(s.name)} } from "./${s.name}/index.ts";`)
+					.map(s => `import type { ${generator.formatSchemaName(s.name)} } from "./${s.name}/index.ts";`)
 					.join("\n"),
 			);
 
@@ -319,7 +325,7 @@ export const Kysely = createGenerator(opts => {
 						const seen = new Set<string>();
 						const formatted = tables
 							.map(each => {
-								const formatted = this.formatSchemaType(each);
+								const formatted = generator.formatSchemaMemberName(each);
 								// skip clashing names
 								if (seen.has(formatted)) return;
 								seen.add(formatted);
@@ -337,7 +343,7 @@ export const Kysely = createGenerator(opts => {
 								else qualified = t.name;
 								qualified = quoteI(qualified);
 
-								return `\t${qualified}: ${this.formatSchema(schema.name)}[${quote(
+								return `\t${qualified}: ${generator.formatSchemaName(schema.name)}[${quote(
 									t.kind + "s",
 								)}][${quote(t.name)}];`;
 							})
@@ -351,7 +357,7 @@ export const Kysely = createGenerator(opts => {
 				parts.push(iface);
 			}
 
-			parts.push(schemas.map(s => `export type { ${this.formatSchema(s.name)} };`).join("\n"));
+			parts.push(schemas.map(s => `export type { ${generator.formatSchemaName(s.name)} };`).join("\n"));
 
 			return join(parts);
 		},

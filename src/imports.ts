@@ -13,14 +13,14 @@ export interface ImportIdentifier {
 }
 
 export class Import {
-	from: string | ((files: FolderStructure, context_file: string) => string);
+	from: string | ((files: FolderStructure) => string);
 	namedImports?: (string | ImportIdentifier)[];
 	star?: string;
 	default?: string;
 	typeOnly?: boolean;
 
 	constructor(args: {
-		from: string | ((files: FolderStructure, context_file: string) => string);
+		from: string | ((files: FolderStructure) => string);
 		namedImports?: (string | ImportIdentifier)[];
 		star?: string;
 		default?: string;
@@ -34,6 +34,7 @@ export class Import {
 	}
 
 	static fromInternal(opts: {
+		source: string;
 		type: Canonical | FunctionReturnType.ExistingTable;
 		withName?: string;
 		typeOnly?: boolean;
@@ -41,12 +42,12 @@ export class Import {
 		const t = opts.type;
 
 		return new Import({
-			from: (files, context_file) => {
+			from: files => {
 				const schema = files.children[t.schema]!;
 				const kind = schema.children[`${t.kind}s`]!;
 				const type = kind.children[t.name]!;
 				const path = `${files.name}/${schema.name}/${kind.kind}/${type.name}.ts`;
-				return relative(dirname(context_file), path);
+				return relative(dirname(opts.source), path);
 			},
 			namedImports: [opts.withName ?? t.name],
 			typeOnly: opts.typeOnly,
@@ -55,7 +56,7 @@ export class Import {
 }
 
 export class ImportList {
-	constructor(public imports: Import[]) {}
+	constructor(public imports: Import[] = []) {}
 
 	static merge(lists: ImportList[]) {
 		return new ImportList(lists.flatMap(l => l.imports));
@@ -65,10 +66,10 @@ export class ImportList {
 		this.imports.push(item);
 	}
 
-	stringify(context_file: string, files: FolderStructure) {
+	stringify(files: FolderStructure) {
 		const modulegroups: Record<string, Import[]> = {};
 		for (const item of this.imports) {
-			const from = typeof item.from === "function" ? item.from(files, context_file) : item.from;
+			const from = typeof item.from === "function" ? item.from(files) : item.from;
 			const group = modulegroups[from];
 			if (group) group.push(item);
 			else modulegroups[from] = [item];

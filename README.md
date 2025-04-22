@@ -118,28 +118,28 @@ You can create a custom generator to control how code is generated:
 import { createGenerator, generate } from "true-pg";
 
 const generator = createGenerator(opts => ({
-	formatSchema: name => `${name}Schema`,
-	formatSchemaType: type => `${type}Type`,
-	formatType: type => `${type}Interface`,
-	table: (imports, table) => {
+	formatSchemaName: name => `${name}Schema`,
+	formatSchemaMemberName: type => `${type.name}Type`,
+	formatType: (ctx, type) => `${type}Interface`,
+	table: (ctx, table) => {
 		// Custom table type generation
 	},
-	enum: (imports, en) => {
+	enum: (ctx, en) => {
 		// Custom enum type generation
 	},
-	composite: (imports, composite) => {
+	composite: (ctx, composite) => {
 		// Custom composite type generation
 	},
-	function: (imports, func) => {
+	function: (ctx, func) => {
 		// Custom function type generation
 	},
-	schemaKindIndex: (schema, kind) => {
+	schemaKindIndex: (ctx, schema, kind) => {
 		// Custom schema kind index generation
 	},
-	schemaIndex: schema => {
+	schemaIndex: (ctx, schema) => {
 		// Custom schema index generation
 	},
-	fullIndex: schemas => {
+	fullIndex: (ctx, schemas) => {
 		// Custom full index generation
 	},
 }));

@@ -64,90 +64,104 @@ export interface createGenerator {
 /* convenience function to create a generator with type inference */
 export const createGenerator = (generatorCreator: createGenerator): createGenerator => generatorCreator;
 
+export interface GeneratorContext {
+	/** The source file path */
+	source: string;
+	/** Append types to import */
+	imports: ImportList;
+}
+
+export interface FormatTypeAttributes {
+	nullable?: boolean;
+	generated?: boolean;
+	identity?: boolean;
+}
+
 export interface SchemaGenerator {
 	/**
 	 * Use this function to define a name mapping for schema names.
 	 * This is useful if you want to use a different name for a schema in the generated code.
 	 * Example: "public" -> "PublicSchema"
 	 */
-	formatSchema(name: string): string;
+	formatSchemaName(name: string): string;
 
 	/**
-	 * Use this function to define a name mapping for schema types.
-	 * This is useful if you want to use a different name for a type in the generated code.
+	 * Use this function to define a name mapping for schema members.
+	 * This is useful if you want to use a different name for a member in the generated code.
 	 * Example: "users" -> "UsersTable"
 	 */
-	formatSchemaType(type: SchemaType): string;
+	formatSchemaMemberName(type: SchemaType): string;
 
 	/**
 	 * Use this function to define a name mapping for type names.
 	 * This is useful if you want to use a different name for a type in the generated code.
 	 * Example: "users" -> "UsersTable"
 	 */
-	formatType(type: Canonical | FunctionReturnType.ExistingTable): string;
+	formatType(
+		ctx: GeneratorContext,
+		type: Canonical | FunctionReturnType.ExistingTable,
+		attr?: FormatTypeAttributes,
+	): string;
 
 	table(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the table */
 		table: TableDetails,
 	): string;
 
 	view(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the view */
 		view: ViewDetails,
 	): string;
 
 	materializedView(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the materialized view */
 		materializedView: MaterializedViewDetails,
 	): string;
 
 	enum(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the enum */
 		en: EnumDetails,
 	): string;
 
 	composite(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the composite type */
 		type: CompositeTypeDetails,
 	): string;
 
 	domain(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the domain */
 		type: DomainDetails,
 	): string;
 
 	range(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the range */
 		type: RangeDetails,
 	): string;
 
 	function(
-		/** @out Append used types to this array */
-		imports: ImportList,
+		ctx: GeneratorContext,
 		/** Information about the function */
 		type: FunctionDetails,
 	): string;
 
 	/** create the file `$out/$schema.name/$kind/index.ts` */
-	schemaKindIndex(schema: Schema, kind: Exclude<keyof Schema, "name">, main_generator?: SchemaGenerator): string;
+	schemaKindIndex(
+		ctx: GeneratorContext,
+		schema: Schema,
+		kind: Exclude<keyof Schema, "name">,
+		main_generator?: SchemaGenerator,
+	): string;
 
 	/** create the file `$out/$schema.name/index.ts` */
-	schemaIndex(schema: Schema, main_generator?: SchemaGenerator): string;
+	schemaIndex(ctx: GeneratorContext, schema: Schema, main_generator?: SchemaGenerator): string;
 
 	/** create the file `$out/index.ts` */
-	fullIndex(schemas: Schema[], main_generator?: SchemaGenerator): string;
+	fullIndex(ctx: GeneratorContext, schemas: Schema[], main_generator?: SchemaGenerator): string;
 }

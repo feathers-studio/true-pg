@@ -87,7 +87,7 @@ const filter_unsupported_functions = (functions: FunctionDetails[]) => {
 };
 
 const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: ValidatedConfig) => {
-	const { out } = opts;
+	const { out, defaultSchema } = opts;
 
 	let count = 0;
 	const write = async (filename: string, file: string) => {
@@ -96,7 +96,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 	};
 
 	const warnings: Set<string> = new Set();
-	const gens = generators.map(g => g({ ...opts, warnings }));
+	const gens = generators.map(g => g({ defaultSchema, warnings }));
 	const def_gen = gens[0]!;
 
 	const files: FolderStructure = {
@@ -118,7 +118,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 									schema[kind].map(item => [
 										item.name,
 										{
-											name: def_gen.formatSchemaType(item),
+											name: def_gen.formatSchemaMemberName(item),
 											type: "type",
 										},
 									]),
@@ -170,7 +170,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 			for (const [i, item] of schema[kind].entries()) {
 				const index = "[" + (i + 1 + "]").padEnd(3, " ");
-				const filename = joinpath(schemaDir, kind, def_gen.formatSchemaType(item) + ".ts");
+				const filename = joinpath(schemaDir, kind, def_gen.formatSchemaMemberName(item) + ".ts");
 
 				const exists = await existsSync(filename);
 
@@ -185,22 +185,19 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 				let file = "";
 
-				const imports = new ImportList([]);
+				const imports = new ImportList();
 
-				if (item.kind === "table") file += join(gens.map(gen => gen.table(imports, item)));
-				if (item.kind === "view") file += join(gens.map(gen => gen.view(imports, item)));
-				// prettier-ignore
-				if (item.kind === "materializedView") file += join(gens.map(gen => gen.materializedView(imports, item)));
-				if (item.kind === "enum") file += join(gens.map(gen => gen.enum(imports, item)));
-				if (item.kind === "composite") file += join(gens.map(gen => gen.composite(imports, item)));
-				if (item.kind === "domain") file += join(gens.map(gen => gen.domain(imports, item)));
-				if (item.kind === "range") file += join(gens.map(gen => gen.range(imports, item)));
-				if (item.kind === "function") file += join(gens.map(gen => gen.function(imports, item)));
+				file += join(
+					gens.map(gen =>
+						gen[item.kind](
+							{ source: filename, imports },
+							// @ts-expect-error TypeScript cannot fathom the fact that item is related to item.kind
+							item,
+						),
+					),
+				);
 
-				const parts: string[] = [];
-				parts.push(imports.stringify(filename, files));
-				parts.push(file);
-				file = join(parts);
+				file = join([imports.stringify(files), file]);
 
 				await write(filename, file);
 
@@ -209,12 +206,15 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 			{
 				const start = performance.now();
-				const kindIndex = join(gens.map(gen => gen.schemaKindIndex(schema, kind, def_gen)));
-				const kindIndexFilename = joinpath(schemaDir, kind, "index.ts");
-				await write(kindIndexFilename, kindIndex);
+				const imports = new ImportList();
+				const fileName = joinpath(schemaDir, kind, "index.ts");
+				const kindIndex = join(
+					gens.map(gen => gen.schemaKindIndex({ source: fileName, imports }, schema, kind, def_gen)),
+				);
+				const file = join([imports.stringify(files), kindIndex]);
+				await write(fileName, file);
 
-				const end = performance.now();
-				console.log("  ✅   Created %s index: %s %s\n", kind, kindIndexFilename, time(start));
+				console.log("  ✅   Created %s index: %s %s\n", kind, fileName, time(start));
 			}
 		}
 
@@ -222,21 +222,25 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 		{
 			const start = performance.now();
-			const index = join(gens.map(gen => gen.schemaIndex(schema, def_gen)));
-			const indexFilename = joinpath(schemaDir, "index.ts");
-			await write(indexFilename, index);
+			const imports = new ImportList();
+			const fileName = joinpath(schemaDir, "index.ts");
+			const index = join(gens.map(gen => gen.schemaIndex({ source: fileName, imports }, schema, def_gen)));
+			const file = join([imports.stringify(files), index]);
+			await write(fileName, file);
 
-			console.log(" Created schema index: %s %s\n", indexFilename, time(start));
+			console.log(" Created schema index: %s %s\n", fileName, time(start));
 		}
 	}
 
 	{
 		const start = performance.now();
-		const fullIndex = join(gens.map(gen => gen.fullIndex(Object.values(schemas))));
-		const fullIndexFilename = joinpath(out, "index.ts");
-		await write(fullIndexFilename, fullIndex);
+		const imports = new ImportList();
+		const fileName = joinpath(out, "index.ts");
+		const fullIndex = join(gens.map(gen => gen.fullIndex({ source: fileName, imports }, Object.values(schemas))));
+		const file = join([imports.stringify(files), fullIndex]);
+		await write(fileName, file);
 
-		console.log("Created full index: %s %s", fullIndexFilename, time(start));
+		console.log("Created full index: %s %s", fileName, time(start));
 	}
 
 	if (warnings.size > 0) {

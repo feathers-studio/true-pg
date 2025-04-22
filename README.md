@@ -147,6 +147,7 @@ const generator = createGenerator(opts => ({
 await generate(
 	{
 		uri: "postgres://user:password@localhost:5432/database",
+		adapters: [], // empty array to disable adapters
 		out: "src/models",
 	},
 	[generator],

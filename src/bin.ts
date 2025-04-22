@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import mri from "mri";
-import { generate, adapters } from "./index.ts";
+import { generate } from "./index.ts";
+import { adapters } from "./config.ts";
 
 const args = process.argv.slice(2);
 const opts = mri<{

@@ -1,24 +1,17 @@
 import { Extractor, FunctionReturnTypeKind } from "./extractor/index.ts";
 import type { FunctionDetails, Schema } from "./extractor/index.ts";
 import { rm, mkdir, writeFile } from "node:fs/promises";
-import { Nodes, allowed_kind_names, type FolderStructure, type TruePGConfig, type createGenerator } from "./types.ts";
+import { Nodes, allowed_kind_names, type FolderStructure, type createGenerator } from "./types.ts";
 import { existsSync } from "node:fs";
 import { join } from "./util.ts";
 
-export { config } from "./types.ts";
-
-import { Kysely } from "./kysely/index.ts";
-import { Zod } from "./zod/index.ts";
-import { join as joinpath, normalize as normalise } from "node:path";
+import { join as joinpath } from "node:path";
+import { type TruePGConfig, type ValidatedConfig, config, adapters } from "./config.ts";
+export { type TruePGConfig, type ValidatedConfig, config };
 
 const time = (start: number) => {
 	const end = performance.now();
 	return (end - start).toFixed(2);
-};
-
-export const adapters: Record<string, createGenerator> = {
-	kysely: Kysely,
-	zod: Zod,
 };
 
 const filter_function = (func: FunctionDetails) => {
@@ -59,7 +52,7 @@ const filter_function = (func: FunctionDetails) => {
 
 const write = (filename: string, file: string) => writeFile(filename, file + "\n");
 
-const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: TruePGConfig) => {
+const multifile = async (generators: createGenerator[], schemas: Record<string, Schema>, opts: ValidatedConfig) => {
 	const { out } = opts;
 
 	const warnings: string[] = [];
@@ -206,14 +199,8 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 };
 
 export async function generate(opts: TruePGConfig, generators?: createGenerator[]) {
-	const out = normalise(opts.out || "./models");
-
-	if (!("uri" in opts) && !("config" in opts) && !("pg" in opts)) {
-		console.error(
-			"One of these options are required in your config file: uri, config, pg. See documentation for more information.",
-		);
-		process.exit(1);
-	}
+	const validated = config(opts);
+	const out = validated.out;
 
 	const extractor = new Extractor(opts);
 
@@ -222,17 +209,14 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	const end = performance.now();
 	console.log("Extracted schemas \x1b[32m(%sms)\x1b[0m\n", (end - start).toFixed(2));
 
-	console.info("Adapters enabled: %s\n", opts.adapters.join(", "));
+	console.info("Adapters enabled: %s\n", validated.adapters.join(", "));
 
-	generators ??= opts.adapters.map(adapter => {
-		const selected = adapters[adapter];
-		if (!selected) throw new Error(`Requested adapter ${adapter} not found`);
-		return selected;
-	});
+	generators = validated.adapters.map(adapter => adapters[adapter]).concat(generators ?? []);
+
 	console.log("Clearing directory and generating schemas at '%s'\n", out);
 	await rm(out, { recursive: true, force: true });
 	await mkdir(out, { recursive: true });
-	await multifile(generators, schemas, { ...opts, out });
+	await multifile(generators, schemas, validated);
 
 	console.log("Completed in \x1b[32m%sms\x1b[0m", time(start));
 }

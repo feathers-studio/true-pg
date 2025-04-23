@@ -1,16 +1,16 @@
 // @ts-check
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { config } from "../src/index.ts";
 
 const pg = new PGlite("memory://");
 
-const schema_defs = readFileSync("database.sql", "utf-8");
-const seed = readFileSync("seed.sql", "utf-8");
+const read = async path => readFile(await import.meta.resolve(path).slice("file://".length), "utf-8");
 
-await pg.exec(schema_defs);
-await pg.exec(seed);
+// since this is in-memory, we need to load the schema and seed
+await pg.exec(await read("./database.sql"));
+await pg.exec(await read("./seed.sql"));
 
 export default config({
 	pg,

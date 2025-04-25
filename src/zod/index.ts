@@ -1,6 +1,6 @@
 import {
+	Canonical,
 	FunctionReturnTypeKind,
-	type Canonical,
 	type MaterializedViewColumn,
 	type TableColumn,
 	type ViewColumn,
@@ -65,19 +65,28 @@ export const Zod = createGenerator(opts => {
 
 			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
 				base = to_snake_case(type.name);
-			} else if (type.schema === "pg_catalog") {
+				ctx.imports.add(
+					Import.fromInternal({
+						source: ctx.source,
+						type,
+						withName: base,
+						typeOnly: false,
+					}),
+				);
+			} else if (
+				type.schema === "pg_catalog" ||
+				type.kind === Canonical.Kind.Base ||
+				type.kind === Canonical.Kind.Pseudo
+			) {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) base = format;
 				else {
 					opts?.warnings?.add(
-						`(zod) Unknown builtin type: ${name}. Pass 'zod.builtinMap' to map this type. Defaulting to "z.unknown()".`,
+						`(zod) Unknown base type: ${name}. Pass 'zod.builtinMap' to map this type. Defaulting to "z.unknown()".`,
 					);
 					base = "z.unknown()";
 				}
-			} else base = to_snake_case(type.name);
-
-			if (type.schema === "pg_catalog") {
 				ctx.imports.add(
 					new Import({
 						from: "zod",
@@ -85,7 +94,7 @@ export const Zod = createGenerator(opts => {
 					}),
 				);
 			} else {
-				// before adding modifiers, add the import
+				base = to_snake_case(type.name);
 				ctx.imports.add(
 					Import.fromInternal({
 						source: ctx.source,
@@ -257,7 +266,7 @@ export const Zod = createGenerator(opts => {
 		schemaIndex(ctx, schema, main_generator) {
 			const actual_kinds = allowed_kind_names.filter(kind => schema[kind].length);
 			// we could in theory use the imports from GeneratorContext here, but this works fine
-			let out = actual_kinds.map(kind => `import * as zod_${kind} from "./${kind}/index.ts";`).join("\n");
+			let out = actual_kinds.map(kind => `import * as zod_${kind}s from "./${kind}s/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export const ${this.formatSchemaName(schema.name)} = {\n`;
@@ -266,7 +275,7 @@ export const Zod = createGenerator(opts => {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
-				out += `\t${kind}: {\n`;
+				out += `\t${kind}s: {\n`;
 
 				const formatted = items
 					.map(each => {
@@ -322,7 +331,7 @@ export const Zod = createGenerator(opts => {
 								if (!formatted.length) return "";
 
 								let out = "";
-								out += "\t// " + kind + "\n";
+								out += "\t// " + kind + "s\n";
 								out += join(
 									formatted.map(t => {
 										const isDefault = defaultSchema === schema.name;

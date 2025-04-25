@@ -28,15 +28,12 @@ export const Validators = {
 	// materializedViews
 	monthly_sales_summary: public_validators["materializedViews"]["monthly_sales_summary"],
 
-	// enums
-	user_role: public_validators["enums"]["user_role"],
-	order_status: public_validators["enums"]["order_status"],
-
 	// composites
 	address: public_validators["composites"]["address"],
 
-	// functions
-	calculate_order_total: public_validators["functions"]["calculate_order_total"],
+	// enums
+	user_role: public_validators["enums"]["user_role"],
+	order_status: public_validators["enums"]["order_status"],
 
 	// domains
 	email: public_validators["domains"]["email"],
@@ -44,6 +41,9 @@ export const Validators = {
 
 	// ranges
 	validity_period: public_validators["ranges"]["validity_period"],
+
+	// functions
+	calculate_order_total: public_validators["functions"]["calculate_order_total"],
 };
 
 export type { public_validators };

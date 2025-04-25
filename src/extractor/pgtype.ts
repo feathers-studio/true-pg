@@ -1,6 +1,6 @@
 export const typeKindMap = {
-	d: "domain",
 	e: "enum",
+	d: "domain",
 	r: "range",
 
 	// Not supported (yet):
@@ -11,7 +11,7 @@ export const typeKindMap = {
 	// c: 'composite', -- is also a class, handled below.
 } as const;
 
-type TypeKind = (typeof typeKindMap)[keyof typeof typeKindMap];
+export type TypeKind = (typeof typeKindMap)[keyof typeof typeKindMap];
 
 export const classKindMap = {
 	r: "table",
@@ -28,7 +28,7 @@ export const classKindMap = {
 	// I: 'partitionedIndex',
 } as const;
 
-type ClassKind = (typeof classKindMap)[keyof typeof classKindMap];
+export type ClassKind = (typeof classKindMap)[keyof typeof classKindMap];
 
 export const routineKindMap = {
 	// p: "procedure",
@@ -39,9 +39,17 @@ export const routineKindMap = {
 	// w: 'windowFunction',
 } as const;
 
-type RoutineKind = (typeof routineKindMap)[keyof typeof routineKindMap];
+export type RoutineKind = (typeof routineKindMap)[keyof typeof routineKindMap];
 
-export type Kind = TypeKind | ClassKind | RoutineKind;
+const unique = <T>(arr: T[]): T[] => [...new Set(arr)];
+
+export const pgTypeKinds = unique([
+	...Object.values(classKindMap),
+	...Object.values(typeKindMap),
+	...Object.values(routineKindMap),
+] as const);
+
+export type Kind = (typeof pgTypeKinds)[number];
 
 /**
  * Base type for Postgres objects.

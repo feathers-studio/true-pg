@@ -47,7 +47,6 @@ export const Kysely = createGenerator(opts => {
 
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += quoteI(col.name);
-		// TODO: update imports for non-primitive types
 		out += `: ${qualified}`;
 
 		return `\t${out};\n`;
@@ -81,20 +80,30 @@ export const Kysely = createGenerator(opts => {
 
 			if (type.kind === FunctionReturnTypeKind.ExistingTable) {
 				base = toPascalCase(type.name);
-			} else if (type.schema === "pg_catalog") {
+				ctx.imports.add(
+					Import.fromInternal({
+						source: ctx.source,
+						type,
+						withName: base,
+						typeOnly: true,
+					}),
+				);
+			} else if (
+				type.schema === "pg_catalog" ||
+				type.kind === Canonical.Kind.Base ||
+				type.kind === Canonical.Kind.Pseudo
+			) {
 				const name = type.canonical_name;
 				const format = builtins[name];
 				if (format) base = format;
 				else {
 					opts?.warnings?.add(
-						`(kysely) Unknown builtin type: ${name}. Pass 'kysely.builtinMap' to map this type. Defaulting to "unknown".`,
+						`(kysely) Unknown base type: ${name}. Pass 'kysely.builtinMap' to map this type. Defaulting to "unknown".`,
 					);
 					base = "unknown";
 				}
-			} else base = toPascalCase(type.name);
-
-			if (type.schema !== "pg_catalog") {
-				// before adding modifiers, add the import
+			} else {
+				base = toPascalCase(type.name);
 				ctx.imports.add(
 					Import.fromInternal({
 						source: ctx.source,
@@ -264,7 +273,7 @@ export const Kysely = createGenerator(opts => {
 		schemaIndex(ctx, schema) {
 			const actual_kinds = allowed_kind_names.filter(kind => schema[kind].length);
 			// we could in theory use the imports from GeneratorContext here, but this works fine
-			let out = actual_kinds.map(kind => `import type * as ${kind} from "./${kind}/index.ts";`).join("\n");
+			let out = actual_kinds.map(kind => `import type * as ${kind}s from "./${kind}s/index.ts";`).join("\n");
 
 			out += "\n\n";
 			out += `export interface ${this.formatSchemaName(schema.name)} {\n`;
@@ -273,7 +282,7 @@ export const Kysely = createGenerator(opts => {
 				const items = schema[kind];
 				if (items.length === 0) continue;
 
-				out += `\t${kind}: {\n`;
+				out += `\t${kind}s: {\n`;
 
 				const formatted = items
 					.map(each => {
@@ -310,7 +319,7 @@ export const Kysely = createGenerator(opts => {
 				iface += schemas
 					.map(schema => {
 						// only tables, views, and materialized views are queryable
-						const tables = [...schema.tables, ...schema.views, ...schema.materializedViews];
+						const tables = [...schema.table, ...schema.view, ...schema.materializedView];
 
 						let out = "";
 

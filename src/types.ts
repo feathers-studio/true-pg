@@ -11,21 +11,14 @@ import {
 	type SchemaType,
 	type Schema,
 	type FunctionReturnType,
+	pgTypeKinds,
 } from "./extractor/index.ts";
 
 import type { ImportList } from "./imports.ts";
 
 // To be updated when we add support for other kinds
-export const allowed_kind_names = [
-	"tables",
-	"views",
-	"materializedViews",
-	"enums",
-	"composites",
-	"functions",
-	"domains",
-	"ranges",
-] as const;
+
+export const allowed_kind_names = pgTypeKinds;
 
 export type allowed_kind_names = (typeof allowed_kind_names)[number];
 
@@ -37,8 +30,8 @@ export interface FolderStructure {
 			name: string;
 			type: "schema";
 			children: {
-				[kind: string]: {
-					kind: allowed_kind_names;
+				[kind in allowed_kind_names]: {
+					kind: kind;
 					type: "kind";
 					children: {
 						[realname: string]: {

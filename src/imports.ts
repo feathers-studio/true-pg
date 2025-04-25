@@ -2,7 +2,7 @@ import { dirname, relative } from "node:path";
 
 import type { Canonical } from "./extractor/index.ts";
 import type { FunctionReturnType } from "./extractor/index.ts";
-import type { FolderStructure } from "./types.ts";
+import type { allowed_kind_names, FolderStructure } from "./types.ts";
 
 import { eq } from "./util.ts";
 
@@ -11,6 +11,10 @@ export interface ImportIdentifier {
 	alias?: string;
 	typeOnly?: boolean;
 }
+
+type Supported<T> = {
+	[key in allowed_kind_names]: T extends { kind: key } ? T : never;
+}[allowed_kind_names];
 
 export class Import {
 	from: string | ((files: FolderStructure) => string);
@@ -35,7 +39,7 @@ export class Import {
 
 	static fromInternal(opts: {
 		source: string;
-		type: Canonical | FunctionReturnType.ExistingTable;
+		type: Supported<Canonical | FunctionReturnType.ExistingTable>;
 		withName?: string;
 		typeOnly?: boolean;
 	}) {
@@ -44,9 +48,9 @@ export class Import {
 		return new Import({
 			from: files => {
 				const schema = files.children[t.schema]!;
-				const kind = schema.children[`${t.kind}s`]!;
+				const kind = schema.children[t.kind]!;
 				const type = kind.children[t.name]!;
-				const path = `${files.name}/${schema.name}/${kind.kind}/${type.name}.ts`;
+				const path = `${files.name}/${schema.name}/${kind.kind}s/${type.name}.ts`;
 				return relative(dirname(opts.source), path);
 			},
 			namedImports: [opts.withName ?? t.name],

@@ -13,11 +13,13 @@ import extractDomain, { type DomainDetails } from "./kinds/domain.ts";
 import extractRange, { type RangeDetails } from "./kinds/range.ts";
 
 import fetchTypes from "./fetchTypes.ts";
+
 import type { Kind, PgType } from "./pgtype.ts";
+export { pgTypeKinds, type PgType, type Kind } from "./pgtype.ts";
 
 import { canonicalise, Canonical } from "./canonicalise.ts";
-
 export { Canonical };
+
 export type {
 	TableDetails,
 	ViewDetails,
@@ -51,14 +53,14 @@ interface DetailsMap {
  */
 export type Schema = {
 	name: string;
-	tables: TableDetails[];
-	views: ViewDetails[];
-	materializedViews: MaterializedViewDetails[];
-	enums: EnumDetails[];
-	composites: CompositeTypeDetails[];
-	functions: FunctionDetails[];
-	domains: DomainDetails[];
-	ranges: RangeDetails[];
+	table: TableDetails[];
+	view: ViewDetails[];
+	materializedView: MaterializedViewDetails[];
+	enum: EnumDetails[];
+	composite: CompositeTypeDetails[];
+	function: FunctionDetails[];
+	domain: DomainDetails[];
+	range: RangeDetails[];
 };
 
 export type SchemaType =
@@ -72,14 +74,14 @@ export type SchemaType =
 	| RangeDetails;
 
 const emptySchema: Omit<Schema, "name"> = {
-	tables: [],
-	views: [],
-	materializedViews: [],
-	enums: [],
-	composites: [],
-	functions: [],
-	domains: [],
-	ranges: [],
+	table: [],
+	view: [],
+	materializedView: [],
+	enum: [],
+	composite: [],
+	function: [],
+	domain: [],
+	range: [],
 };
 
 type Populator<K extends Kind> = (pg: DbAdapter, pgType: PgType<K>) => Promise<DetailsMap[K] | DetailsMap[K][]>;
@@ -274,10 +276,7 @@ export class Extractor {
 					...emptySchema,
 				};
 			}
-			(schemas[p.schemaName]![`${p.kind}s`] as DetailsMap[typeof p.kind][]) = [
-				...schemas[p.schemaName]![`${p.kind}s`],
-				p,
-			];
+			(schemas[p.schemaName]![p.kind] as DetailsMap[typeof p.kind][]) = [...schemas[p.schemaName]![p.kind], p];
 		}
 
 		const result =

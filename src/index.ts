@@ -125,7 +125,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 								),
 							},
 						]),
-					),
+					) as FolderStructure["children"][string]["children"],
 				},
 			]),
 		),
@@ -136,9 +136,9 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 
 		const schemaDir = joinpath(out, schema.name);
 
-		const [unique_functions, overloaded_functions] = filter_overloaded_functions(schema.functions);
+		const [unique_functions, overloaded_functions] = filter_overloaded_functions(schema.function);
 		const [supported_functions, unsupported_functions] = filter_unsupported_functions(unique_functions);
-		schema.functions = supported_functions;
+		schema.function = supported_functions;
 
 		{
 			const skipped = unsupported_functions.map(f => `  - ${f.name}`);
@@ -165,12 +165,14 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			if (schema[kind].length < 1) continue;
 			createIndex = true;
 
-			await mkdir(joinpath(schemaDir, kind), { recursive: true });
-			console.log(" Creating %s:\n", kind);
+			const kindDir = joinpath(schemaDir, kind + "s");
+
+			await mkdir(kindDir, { recursive: true });
+			console.log(" Creating %s:\n", kind + "s");
 
 			for (const [i, item] of schema[kind].entries()) {
 				const index = "[" + (i + 1 + "]").padEnd(3, " ");
-				const filename = joinpath(schemaDir, kind, def_gen.formatSchemaMemberName(item) + ".ts");
+				const filename = joinpath(kindDir, def_gen.formatSchemaMemberName(item) + ".ts");
 
 				const exists = await existsSync(filename);
 
@@ -207,7 +209,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 			{
 				const start = performance.now();
 				const imports = new ImportList();
-				const fileName = joinpath(schemaDir, kind, "index.ts");
+				const fileName = joinpath(kindDir, "index.ts");
 				const kindIndex = join(
 					gens.map(gen => gen.schemaKindIndex({ source: fileName, imports }, schema, kind, def_gen)),
 				);

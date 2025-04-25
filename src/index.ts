@@ -18,11 +18,28 @@ const blue = (str: string | number) => (NO_COLOR ? str : `\x1b[34m${str}\x1b[0m`
 const bold = (str: string | number) => (NO_COLOR ? str : `\x1b[1m${str}\x1b[0m`);
 const underline = (str: string | number) => (NO_COLOR ? str : `\x1b[4m${str}\x1b[0m`);
 
+const formatTime = (time: number): string => {
+	const mins = Math.floor(time / 60000);
+	const secs = Math.floor((time % 60000) / 1000);
+	const ms = Math.floor(time % 1000);
+	const us = Math.floor((time * 1000) % 1000)
+		.toString()
+		.padStart(3, "0");
+
+	const parts = [];
+	if (mins) parts.push(mins + "m");
+	if (secs) parts.push(secs + "s");
+	if (!mins) parts.push(ms + (!secs && us ? "." + us : "") + "ms");
+
+	return parts.join("");
+};
+
 const THRESHOLD1 = 800;
 const THRESHOLD2 = 1500;
+
 const time = (start: number, addParens = true) => {
 	const diff = performance.now() - start;
-	const diffstr = diff.toFixed(2) + "ms";
+	const diffstr = formatTime(diff);
 	const str = addParens ? parens(diffstr) : diffstr;
 
 	if (diff < THRESHOLD1) return green(str);

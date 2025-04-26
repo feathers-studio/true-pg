@@ -17,7 +17,7 @@ import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
 export { pgTypeKinds, type PgType, type Kind } from "./pgtype.ts";
 
-import { canonicalise, Canonical } from "./canonicalise.ts";
+import { canonicalise, Canonical, canonicaliseFromOids } from "./canonicalise.ts";
 export { Canonical };
 
 export type {
@@ -174,6 +174,10 @@ export class Extractor {
 
 	async canonicalise(types: string[]) {
 		return canonicalise(this.db, types);
+	}
+
+	async canonicaliseFromOids(oids: number[]) {
+		return canonicaliseFromOids(this.db, oids);
 	}
 
 	async getBuiltinTypes(): Promise<

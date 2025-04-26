@@ -85,24 +85,22 @@ export type Canonical =
 export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Canonical[]> => {
 	if (types.length === 0) return [];
 
-	const placeholders = types.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ");
-
 	const query = `
-	WITH RECURSIVE 
-	-- Parameters with sequence numbers to preserve order
+	WITH RECURSIVE
+	-- Parameters with sequence numbers to preserve order using unnest
 	input(type_name, seq) AS (
-		VALUES ${placeholders}
+		SELECT val, ord FROM unnest($1::text[]) WITH ORDINALITY AS input(val, ord)
 	),
 	-- Parse array dimensions and base type
 	type_parts AS (
 		SELECT
 			type_name,
 			seq,
-			CASE 
+			CASE
 				WHEN type_name ~ '\\(.*\\)' THEN regexp_replace(type_name, '\\(.*\\)', '')
 				ELSE type_name
 			END AS clean_type,
-			CASE 
+			CASE
 				WHEN type_name ~ '\\(.*\\)' THEN substring(type_name from '\\((.*\\?)\\)')
 				ELSE NULL
 			END AS modifiers
@@ -113,8 +111,8 @@ export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Cano
 			type_name,
 			seq,
 			modifiers,
-			CASE 
-				WHEN clean_type ~ '.*\\[\\].*' THEN 
+			CASE
+				WHEN clean_type ~ '.*\\[\\].*' THEN
 					(length(clean_type) - length(regexp_replace(clean_type, '\\[\\]', '', 'g'))) / 2
 				ELSE 0
 			END AS dimensions,
@@ -170,7 +168,7 @@ export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Cano
 					'defaultValue', pg_get_expr(d.adbin, d.adrelid),
 					'isNullable', NOT a.attnotnull,
 					'isIdentity', a.attidentity IS NOT NULL AND a.attidentity != '',
-					'generated', CASE 
+					'generated', CASE
 						WHEN a.attidentity = 'a' THEN 'ALWAYS'
 						WHEN a.attidentity = 'd' THEN 'BY DEFAULT'
 						WHEN a.attgenerated = 's' THEN 'ALWAYS'
@@ -199,7 +197,7 @@ export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Cano
 		WHERE b.type_kind_code = 'd'
 		
 		UNION ALL
-		
+
 		-- Recursive case: follow chain of domains
 		SELECT
 			d.original_type,
@@ -290,12 +288,11 @@ export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Cano
 					kind: Canonical.Kind;
 					range_subtype: string;
 			  });
+		seq: number;
 	}
 
-	const resolved = await db.query<Resolved, (string | number)[]>(
-		query,
-		types.flatMap((type, index) => [type, index]),
-	);
+	const resolved = await db.query<Resolved, [string[]]>(query, [types]);
+
 	return Promise.all(
 		resolved
 			.map(each => each.type_info)
@@ -348,4 +345,38 @@ export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Cano
 				return removeNulls(each) satisfies Canonical;
 			}),
 	);
+};
+
+export const canonicaliseFromOids = async (db: DbAdapter, oids: number[]): Promise<Canonical[]> => {
+	if (oids.length === 0) {
+		return [];
+	}
+
+	const query = `
+		SELECT 
+			input.oid, 
+			format('%I.%I', n.nspname, t.typname) AS qualified_name
+		FROM unnest($1::oid[]) WITH ORDINALITY AS input(oid, ord)
+		JOIN pg_type t ON t.oid = input.oid
+		JOIN pg_namespace n ON t.typnamespace = n.oid
+		ORDER BY input.ord;
+	`;
+
+	interface OidQueryResult {
+		oid: number;
+		qualified_name: string;
+	}
+
+	const results = await db.query<OidQueryResult, [number[]]>(query, [oids]);
+
+	const typeNamesMap = new Map(results.map(r => [r.oid, r.qualified_name]));
+	const typeNames = oids.map(oid => typeNamesMap.get(oid));
+
+	const unknown = typeNames.filter(name => name === undefined);
+
+	if (unknown.length > 0) {
+		throw new Error(`Failed to resolve OIDs to type names: ${unknown.join(", ")}`);
+	}
+
+	return canonicalise(db, typeNames as string[]);
 };

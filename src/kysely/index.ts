@@ -45,6 +45,9 @@ export const Kysely = createGenerator(opts => {
 			ky(ctx, "Generated");
 		}
 
+		// TODO: Use ColumnType for appropriate cases:
+		// composite, jsonb, json, date types, etc
+
 		let out = col.comment ? `/** ${col.comment} */\n\t` : "";
 		out += quoteI(col.name);
 		out += `: ${qualified}`;

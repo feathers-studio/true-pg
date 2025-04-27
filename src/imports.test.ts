@@ -213,7 +213,7 @@ describe("ImportList Class", () => {
 		]);
 
 		const result = importList.stringify(files);
-		expect(result).toContain('import { a } from "module1";');
-		expect(result.split("import").length).toBe(2);
+		expect(result).toBe('import { a } from "module1";');
+		expect(result.split("\n")).toBeArrayOfSize(1);
 	});
 });

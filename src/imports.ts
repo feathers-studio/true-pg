@@ -1,4 +1,4 @@
-import { dirname, relative } from "node:path";
+import { dirname, relative } from "node:path/posix";
 
 import type { Canonical } from "./extractor/index.ts";
 import type { FunctionReturnType } from "./extractor/index.ts";

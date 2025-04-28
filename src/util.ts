@@ -1,3 +1,7 @@
+export const unreachable = (value: never): never => {
+	throw new Error(`Fatal: Reached unreachable code: ${value}`);
+};
+
 export const eq = <T>(a: T, b: T): boolean => {
 	if (a === b) return true;
 	if (a == null || b == null) return false;

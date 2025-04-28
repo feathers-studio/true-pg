@@ -1,9 +1,75 @@
+import { unreachable } from "../util.ts";
 import { DbAdapter } from "./adapter.ts";
 
 const removeNulls = <T>(o: T): T => {
 	for (const key in o) if (o[key] == null) delete o[key];
 	return o;
 };
+
+interface ParsedTypeName {
+	/** Name after removing modifiers and brackets, e.g. "varchar" in "varchar(50)" */
+	base: string;
+	/** Modifiers, e.g. "50" in "varchar(50)" */
+	modifiers: string | null;
+	/** Number of dimensions from explicit brackets, e.g. 1 in "int[]" */
+	dimensions: number;
+	/** Original type name, e.g. "varchar(50)" */
+	original: string;
+}
+
+/**
+ * Parses a PostgreSQL type name string to extract its base name,
+ * modifiers, and dimensions from explicit '[]' brackets.
+ *
+ * Examples:
+ *
+ * - `parseTypeName("varchar(50)")`
+ *
+ *		`⤷ { baseTypeName: "varchar", modifiers: "50", dimensions: 0, originalTypeName: "varchar(50)" }`
+ *
+ * - `parseTypeName("int[]")`
+ *
+ *		`⤷ { baseTypeName: "int", modifiers: null, dimensions: 1, originalTypeName: "int[]" }`
+ *
+ * - `parseTypeName("public.my_table[][]")`
+ *
+ *		`⤷ { baseTypeName: "public.my_table", modifiers: null, dimensions: 2, originalTypeName: "public.my_table[][]" }`
+ *
+ * - `parseTypeName("numeric(10, 2)[]")`
+ *
+ *		`⤷ { baseTypeName: "numeric", modifiers: "10, 2", dimensions: 1, originalTypeName: "numeric(10, 2)[]" }`
+ *
+ * - `parseTypeName("geometry(Point, 4326)")`
+ *
+ *		`⤷ { baseTypeName: "geometry", modifiers: "Point, 4326", dimensions: 0, originalTypeName: "geometry(Point, 4326)" }`
+ *
+ * - `parseTypeName("_text")`
+ *
+ *		`⤷ { baseTypeName: "_text", modifiers: null, dimensions: 0, originalTypeName: "_text" }`
+ *
+ *		Internal arrays aren't handled here
+ */
+export function parseTypeName(type: string): ParsedTypeName {
+	let base = type;
+	let modifiers: string | null = null;
+	let dimensions = 0;
+
+	// 1. Extract modifiers (content within the last parentheses)
+	const modifierMatch = base.match(/\(([^)]*)\)$/);
+	if (modifierMatch) {
+		modifiers = modifierMatch[1]!;
+		base = base.substring(0, modifierMatch.index).trim();
+	}
+
+	// 2. Count and remove explicit array brackets '[]'
+	// Repeatedly remove '[]' from the end and count dimensions
+	while (base.endsWith("[]")) {
+		dimensions++;
+		base = base.slice(0, -2);
+	}
+
+	return { original: type, base, modifiers, dimensions };
+}
 
 export namespace Canonical {
 	export enum Kind {
@@ -74,6 +140,7 @@ export namespace Canonical {
 		kind: Kind.Pseudo;
 	}
 }
+
 export type Canonical =
 	| Canonical.Base
 	| Canonical.Enum
@@ -82,301 +149,291 @@ export type Canonical =
 	| Canonical.Range
 	| Canonical.Pseudo;
 
-export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Canonical[]> => {
-	if (types.length === 0) return [];
+interface ResolvedBasicInfo {
+	seq: number;
+	oid: number;
+	internal_dimensions: number;
+	schema: string;
+	name: string;
+	canonical_name: string;
+	kind: Canonical.Kind;
+	typrelid: number;
+	typbasetype: number;
+	rngsubtype: number;
+}
 
+/**
+ * Takes base type names (without modifiers/brackets), resolves them to their ultimate base type OID
+ * and internal array dimensions, and fetches basic kind information
+ */
+async function resolveBasicInfo(db: DbAdapter, types: string[]): Promise<ResolvedBasicInfo[]> {
 	const query = `
-	WITH RECURSIVE
-	-- Parameters with sequence numbers to preserve order using unnest
-	input(type_name, seq) AS (
-		SELECT val, ord FROM unnest($1::text[]) WITH ORDINALITY AS input(val, ord)
-	),
-	-- Parse array dimensions and base type
-	type_parts AS (
+		WITH RECURSIVE
+		input(base_type_name, seq) AS (
+			SELECT * FROM unnest($1::text[], $2::int[])
+		),
+		type_resolution(seq, current_oid, level) AS (
+			-- Base case: Look up the initial base type name
+			SELECT i.seq, t.oid, 1
+			FROM input i JOIN pg_type t ON t.oid = i.base_type_name::regtype
+			UNION ALL
+			-- Recursive step: Follow typelem for standard arrays (_)
+			SELECT r.seq, t.typelem, r.level + 1
+			FROM type_resolution r JOIN pg_type t ON r.current_oid = t.oid
+			WHERE t.typelem != 0 AND left(t.typname, 1) = '_'
+		),
+		final_resolution AS (
+			-- Get the OID and max level (depth) for each sequence number
+			SELECT DISTINCT ON (seq) seq, current_oid AS base_type_oid, level
+			FROM type_resolution ORDER BY seq, level DESC
+		)
+		-- Combine resolution with basic type info fetching
 		SELECT
-			type_name,
-			seq,
-			CASE
-				WHEN type_name ~ '\\(.*\\)' THEN regexp_replace(type_name, '\\(.*\\)', '')
-				ELSE type_name
-			END AS clean_type,
-			CASE
-				WHEN type_name ~ '\\(.*\\)' THEN substring(type_name from '\\((.*\\?)\\)')
-				ELSE NULL
-			END AS modifiers
-		FROM input
-	),
-	array_dimensions AS (
-		SELECT
-			type_name,
-			seq,
-			modifiers,
-			CASE
-				WHEN clean_type ~ '.*\\[\\].*' THEN
-					(length(clean_type) - length(regexp_replace(clean_type, '\\[\\]', '', 'g'))) / 2
-				ELSE 0
-			END AS dimensions,
-			regexp_replace(clean_type, '\\[\\]', '', 'g') AS base_type_name
-		FROM type_parts
-	),
-	-- Get base type information
-	base_type_info AS (
-		SELECT
-			a.type_name,
-			a.seq,
-			a.modifiers,
-			a.dimensions,
-			t.oid AS type_oid,
-			t.typname AS internal_name,
-			n.nspname AS schema_name,
-			t.typtype AS type_kind_code,
-			t.typbasetype,
+			fr.seq,
+			fr.base_type_oid AS oid,
+			(fr.level - 1) AS internal_dimensions,
+			n.nspname AS schema,
+			t.typname AS name,
+			n.nspname || '.' || t.typname AS canonical_name,
 			CASE t.typtype
-				WHEN 'b' THEN 'base'
-				WHEN 'c' THEN 'composite'
-				WHEN 'd' THEN 'domain'
-				WHEN 'e' THEN 'enum'
-				WHEN 'p' THEN 'pseudo'
-				WHEN 'r' THEN 'range'
-				ELSE 'unknown'
-			END AS type_kind
-		FROM array_dimensions a
-		JOIN pg_type t ON t.oid = a.base_type_name::regtype
+				WHEN 'b' THEN 'base'::text WHEN 'c' THEN 'composite'::text WHEN 'd' THEN 'domain'::text
+				WHEN 'e' THEN 'enum'::text WHEN 'p' THEN 'pseudo'::text    WHEN 'r' THEN 'range'::text
+				ELSE 'unknown'::text
+			END AS kind,
+			t.typrelid,
+			t.typbasetype,
+			COALESCE(r.rngsubtype, 0) AS rngsubtype
+		FROM final_resolution fr
+		JOIN pg_type t ON t.oid = fr.base_type_oid
 		JOIN pg_namespace n ON t.typnamespace = n.oid
-	),
-	-- Handle enum values for enum types
-	enum_values AS (
+		LEFT JOIN pg_range r ON t.oid = r.rngtypid AND t.typtype = 'r'
+		ORDER BY fr.seq;
+	`;
+
+	// Need to handle the string 'kind' coming back from the DB
+	const results = await db.query<ResolvedBasicInfo, [string[], number[]]>(query, [types, types.map((_, i) => i + 1)]);
+	return results;
+}
+
+/** Fetches enum values for given enum type OIDs */
+async function getEnumValues(db: DbAdapter, oid: number): Promise<string[]> {
+	const query = `
+		SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
+		FROM pg_enum e
+		WHERE e.enumtypid = $1::oid
+		GROUP BY e.enumtypid;
+	`;
+	const results = await db.query<{ values: string[] }, [number]>(query, [oid]);
+	return results[0]?.values ?? [];
+}
+
+/** Raw composite attribute info from the database */
+interface RawAttributeInfo {
+	name: string;
+	index: number;
+	type_oid: number;
+	type_name: string;
+	comment: string | null;
+	defaultValue: any;
+	isNullable: boolean;
+	isIdentity: boolean;
+	generated: "ALWAYS" | "NEVER" | "BY DEFAULT";
+}
+
+/** Fetches composite attributes for given composite type OIDs (typrelid) */
+async function getCompositeAttributes(db: DbAdapter, relid: number): Promise<RawAttributeInfo[]> {
+	const query = `
 		SELECT
-			b.type_name,
-			jsonb_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
-		FROM base_type_info b
-		JOIN pg_enum e ON b.type_oid = e.enumtypid
-		WHERE b.type_kind_code = 'e'
-		GROUP BY b.type_name
-	),
-	-- Enhanced composite attributes with additional metadata
-	composite_attributes AS (
-		SELECT
-			b.type_name,
+			a.attrelid AS relid,
 			jsonb_agg(
 				jsonb_build_object(
 					'name', a.attname,
 					'index', a.attnum,
 					'type_oid', a.atttypid,
 					'type_name', format_type(a.atttypid, null),
-					'comment', col_description(c.oid, a.attnum::int),
+					'comment', col_description(a.attrelid, a.attnum::int),
 					'defaultValue', pg_get_expr(d.adbin, d.adrelid),
 					'isNullable', NOT a.attnotnull,
 					'isIdentity', a.attidentity IS NOT NULL AND a.attidentity != '',
-					'generated', CASE
-						WHEN a.attidentity = 'a' THEN 'ALWAYS'
-						WHEN a.attidentity = 'd' THEN 'BY DEFAULT'
-						WHEN a.attgenerated = 's' THEN 'ALWAYS'
-						ELSE 'NEVER'
-					END
-				)
-				ORDER BY a.attnum
+					'generated', CASE WHEN a.attidentity = 'a' THEN 'ALWAYS' WHEN a.attidentity = 'd' THEN 'BY DEFAULT' WHEN a.attgenerated = 's' THEN 'ALWAYS' ELSE 'NEVER' END
+				) ORDER BY a.attnum
 			) AS attributes
-		FROM base_type_info b
-		JOIN pg_type t ON t.oid = b.type_oid
-		JOIN pg_class c ON c.oid = t.typrelid
-		JOIN pg_attribute a ON a.attrelid = c.oid
-		LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-		WHERE b.type_kind_code = 'c' AND a.attnum > 0 AND NOT a.attisdropped
-		GROUP BY b.type_name
-	),
-	-- Recursive CTE to resolve domain base types
-	domain_types AS (
-		-- Base case: start with initial domain type
-		SELECT
-			b.type_name AS original_type,
-			b.type_oid AS domain_oid,
-			b.typbasetype AS base_type_oid,
-			1 AS level
-		FROM base_type_info b
-		WHERE b.type_kind_code = 'd'
-		
-		UNION ALL
+		FROM pg_attribute a
+		LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+		WHERE a.attrelid = $1::oid AND a.attnum > 0 AND NOT a.attisdropped
+		GROUP BY a.attrelid;
+	`;
+	const results = await db.query<{ relid: number; attributes: RawAttributeInfo[] }, [number]>(query, [relid]);
+	return results[0]?.attributes ?? [];
+}
 
-		-- Recursive case: follow chain of domains
-		SELECT
-			d.original_type,
-			t.oid AS domain_oid,
-			t.typbasetype AS base_type_oid,
-			d.level + 1 AS level
-		FROM domain_types d
-		JOIN pg_type t ON d.base_type_oid = t.oid
-		WHERE t.typtype = 'd'-- Only continue if the base is also a domain
-	),
-	-- Get ultimate base type for domains
-	domain_base_types AS (
-		SELECT DISTINCT ON (original_type)
-			d.original_type,
-			format('%s.%s', n.nspname, t.typname) AS base_canonical_name
-		FROM (
-			-- Get the max level for each original type
-			SELECT original_type, MAX(level) AS max_level
-			FROM domain_types
-			GROUP BY original_type
-		) m
-		JOIN domain_types d ON d.original_type = m.original_type AND d.level = m.max_level
-		JOIN pg_type t ON d.base_type_oid = t.oid
-		JOIN pg_namespace n ON t.typnamespace = n.oid
-	),
-	-- Range type subtype information
-	range_subtypes AS (
-		SELECT
-			b.type_name,
-			format('%s.%s', n.nspname, t.typname) AS subtype_canonical_name
-		FROM base_type_info b
-		JOIN pg_range r ON b.type_oid = r.rngtypid
-		JOIN pg_type t ON t.oid = r.rngsubtype  -- Join to get subtype details
-		JOIN pg_namespace n ON n.oid = t.typnamespace -- Join to get subtype schema
-		WHERE b.type_kind_code = 'r'
-	)
-	-- Final result as JSON
-	SELECT jsonb_build_object(
-		'canonical_name', b.schema_name || '.' || b.internal_name,
-		'schema', b.schema_name,
-		'name', b.internal_name,
-		'kind', b.type_kind,
-		'dimensions', b.dimensions,
-		'original_type', b.type_name,
-		'modifiers', b.modifiers,
-		'enum_values', e.values,
-		'attributes', c.attributes,
-		'domain_base_type', CASE
-			WHEN b.type_kind_code = 'd' THEN d.base_canonical_name
-			ELSE NULL
-		END,
-		'range_subtype', CASE
-			WHEN b.type_kind_code = 'r' THEN r.subtype_canonical_name
-			ELSE NULL
-		END
-	) AS type_info,
-	b.seq
-	FROM base_type_info b
-	LEFT JOIN enum_values e ON b.type_name = e.type_name
-	LEFT JOIN composite_attributes c ON b.type_name = c.type_name
-	LEFT JOIN domain_base_types d ON b.type_name = d.original_type
-	LEFT JOIN range_subtypes r ON b.type_name = r.type_name
-	ORDER BY b.seq::integer;
+/** Recursive helper to find the ultimate base type OID for a domain */
+async function findUltimateDomainBaseOid(db: DbAdapter, oid: number): Promise<number> {
+	const query = `
+		WITH RECURSIVE domain_chain(oid, base_oid, level) AS (
+			SELECT $1::oid, t.typbasetype, 1
+			FROM pg_type t WHERE t.oid = $1::oid AND t.typtype = 'd'
+			UNION ALL
+			SELECT t.oid, t.typbasetype, dc.level + 1
+			FROM domain_chain dc JOIN pg_type t ON dc.base_oid = t.oid
+			WHERE t.typtype = 'd'
+		)
+		SELECT base_oid FROM domain_chain ORDER BY level DESC LIMIT 1;
+	`;
+	const result = await db.query<{ base_oid: number }, [number]>(query, [oid]);
+	return result[0]?.base_oid ?? oid; // Return original if not a domain or chain ends
+}
+
+/** Fetches the canonical name of the ultimate base type for given domain OIDs */
+async function getDomainBaseTypeName(db: DbAdapter, typbasetype: number): Promise<string> {
+	const ultimateBaseOid = await findUltimateDomainBaseOid(db, typbasetype);
+
+	const query = `
+		SELECT t.oid, format('%I.%I', n.nspname, t.typname) AS name
+		FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid
+		WHERE t.oid = $1::oid
 	`;
 
-	interface Resolved {
-		type_info:
-			| Exclude<Canonical, Canonical.Composite | Canonical.Domain | Canonical.Range>
-			| (Omit<Canonical.Composite, "attributes"> & {
-					kind: Canonical.Kind;
-					attributes: {
-						name: string;
-						index: number;
-						type_oid: number;
-						type_name: string;
-						comment: string | null;
-						defaultValue: any;
-						isNullable: boolean;
-						isIdentity: boolean;
-						generated: "ALWAYS" | "NEVER" | "BY DEFAULT";
-					}[];
-			  })
-			| (Omit<Canonical.Domain, "domain_base_type"> & {
-					kind: Canonical.Kind;
-					domain_base_type: string;
-			  })
-			| (Omit<Canonical.Range, "range_subtype"> & {
-					kind: Canonical.Kind;
-					range_subtype: string;
-			  });
-		seq: number;
-	}
+	const results = await db.query<{ name: string }, [number]>(query, [ultimateBaseOid]);
+	return results[0]?.name ?? "";
+}
 
-	const resolved = await db.query<Resolved, [string[]]>(query, [types]);
+/** Fetches the canonical name of the subtype for given range OIDs */
+async function getRangeSubtypeName(db: DbAdapter, oid: number): Promise<string> {
+	const query = `
+		SELECT t.oid, format('%I.%I', n.nspname, t.typname) AS name
+		FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid
+		WHERE t.oid = $1::oid
+	`;
+	const results = await db.query<{ name: string }, [number]>(query, [oid]);
+	return results[0]?.name ?? "";
+}
 
+// Step 3: Modify canonicalise to orchestrate the calls
+export const canonicalise = async (db: DbAdapter, types: string[]): Promise<Canonical[]> => {
+	if (types.length === 0) return [];
+
+	// 1. Pre-process types in TypeScript
+	const parsedTypes = types.map(originalTypeName => parseTypeName(originalTypeName));
+
+	// 2. Resolve base types, dimensions, and get basic kind info in ONE step
+	const bases = parsedTypes.map(t => t.base);
+	const resolvedInfos = await resolveBasicInfo(db, bases);
+
+	// 3. Combine all results and perform final recursive calls
 	return Promise.all(
-		resolved
-			.map(each => each.type_info)
-			.map(async each => {
-				if (each.kind === Canonical.Kind.Composite) {
-					const types = each.attributes.map(each => each.type_name);
-					const canonical = await canonicalise(db, types);
+		resolvedInfos.map(async (resolvedInfo, index) => {
+			const parsed = parsedTypes[index]!;
 
+			const total_dimensions = parsed.dimensions + resolvedInfo.internal_dimensions;
+
+			const commonProps = {
+				canonical_name: resolvedInfo.canonical_name,
+				schema: resolvedInfo.schema,
+				name: resolvedInfo.name,
+				original_type: parsed.original,
+				modifiers: parsed.modifiers,
+				dimensions: total_dimensions,
+			};
+
+			let result: Canonical;
+
+			switch (resolvedInfo.kind) {
+				case Canonical.Kind.Base:
+					result = { ...commonProps, kind: Canonical.Kind.Base };
+					break;
+				case Canonical.Kind.Enum:
+					const enumValues = await getEnumValues(db, resolvedInfo.oid);
+					if (enumValues.length === 0) {
+						throw new Error(`Enum ${resolvedInfo.canonical_name} (OID: ${resolvedInfo.oid}) lacks values.`);
+					}
+					result = { ...commonProps, kind: Canonical.Kind.Enum, enum_values: enumValues };
+					break;
+				case Canonical.Kind.Composite: {
+					const rawAttributes = await getCompositeAttributes(db, resolvedInfo.typrelid);
+					const attributeTypes = rawAttributes.map(attr => attr.type_name);
+					const canonicalAttributeTypes = await canonicalise(db, attributeTypes); // Recursive call
 					const attributes: Canonical.CompositeAttribute[] = await Promise.all(
-						each.attributes.map(async (each, index) => {
-							return {
-								name: each.name,
-								index: each.index,
-								type: canonical[index]!,
-								comment: each.comment,
-								defaultValue: each.defaultValue,
-								isNullable: each.isNullable,
-								isIdentity: each.isIdentity,
-								generated: each.generated,
-							};
+						rawAttributes.map(async (attr, index) => {
+							return removeNulls({
+								name: attr.name,
+								index: attr.index,
+								type: canonicalAttributeTypes[index]!,
+								comment: attr.comment,
+								defaultValue: attr.defaultValue,
+								isNullable: attr.isNullable,
+								isIdentity: attr.isIdentity,
+								generated: attr.generated,
+							});
 						}),
 					);
-
-					return removeNulls({
-						...each,
-						kind: Canonical.Kind.Composite,
-						attributes,
-					}) satisfies Canonical.Composite;
+					result = { ...commonProps, kind: Canonical.Kind.Composite, attributes };
+					break;
 				}
-
-				if (each.kind === Canonical.Kind.Domain) {
-					const canonical = await canonicalise(db, [each.domain_base_type]);
-
-					return removeNulls({
-						...each,
-						kind: Canonical.Kind.Domain,
-						domain_base_type: canonical[0]!,
-					}) satisfies Canonical.Domain;
+				case Canonical.Kind.Domain: {
+					const baseTypeName = await getDomainBaseTypeName(db, resolvedInfo.typbasetype);
+					if (!baseTypeName) {
+						throw new Error(
+							`Domain ${resolvedInfo.canonical_name} (OID: ${resolvedInfo.oid}) lacks a resolved base type name.`,
+						);
+					}
+					const canonicalBaseType = await canonicalise(db, [baseTypeName]); // Recursive call
+					result = { ...commonProps, kind: Canonical.Kind.Domain, domain_base_type: canonicalBaseType[0]! };
+					break;
 				}
-
-				if (each.kind === Canonical.Kind.Range) {
-					const canonical = await canonicalise(db, [each.range_subtype]);
-					return removeNulls({
-						...each,
-						kind: Canonical.Kind.Range,
-						range_subtype: canonical[0]!,
-					}) satisfies Canonical.Range;
+				case Canonical.Kind.Range: {
+					const subtypeName = await getRangeSubtypeName(db, resolvedInfo.rngsubtype);
+					if (!subtypeName) {
+						throw new Error(
+							`Range ${resolvedInfo.canonical_name} (OID: ${resolvedInfo.oid}) lacks a resolved subtype name.`,
+						);
+					}
+					const canonicalSubtype = await canonicalise(db, [subtypeName]); // Recursive call
+					result = { ...commonProps, kind: Canonical.Kind.Range, range_subtype: canonicalSubtype[0]! };
+					break;
 				}
+				case Canonical.Kind.Pseudo:
+					result = { ...commonProps, kind: Canonical.Kind.Pseudo };
+					break;
+				case Canonical.Kind.Unknown:
+					throw new Error(
+						`Canonicalising "${parsed.original}" resulted in unknown kind: ${resolvedInfo.canonical_name}`,
+					);
+				default:
+					unreachable(resolvedInfo.kind);
+					result = null as unknown as Canonical;
+			}
 
-				return removeNulls(each) satisfies Canonical;
-			}),
+			return result;
+		}),
 	);
 };
 
-export const canonicaliseFromOids = async (db: DbAdapter, oids: number[]): Promise<Canonical[]> => {
-	if (oids.length === 0) {
-		return [];
-	}
+export const oidsToQualifiedNames = async (db: DbAdapter, oids: number[]): Promise<string[]> => {
+	if (oids.length === 0) return [];
 
 	const query = `
-		SELECT 
-			input.oid, 
+		SELECT
+			input.ord,
 			format('%I.%I', n.nspname, t.typname) AS qualified_name
+		-- Use unnest WITH ORDINALITY because SQL doesn't guarantee order of SELECT results
 		FROM unnest($1::oid[]) WITH ORDINALITY AS input(oid, ord)
 		JOIN pg_type t ON t.oid = input.oid
 		JOIN pg_namespace n ON t.typnamespace = n.oid
 		ORDER BY input.ord;
 	`;
 
-	interface OidQueryResult {
-		oid: number;
-		qualified_name: string;
-	}
+	const results = await db.query<{ ord: number; qualified_name: string }, [number[]]>(query, [oids]);
+	return results.map(r => r.qualified_name);
+};
 
-	const results = await db.query<OidQueryResult, [number[]]>(query, [oids]);
+export const canonicaliseFromOids = async (db: DbAdapter, oids: number[]): Promise<Canonical[]> => {
+	if (oids.length === 0) return [];
 
-	const typeNamesMap = new Map(results.map(r => [r.oid, r.qualified_name]));
-	const typeNames = oids.map(oid => typeNamesMap.get(oid));
+	const types = await oidsToQualifiedNames(db, oids);
 
-	const unknown = typeNames.filter(name => name === undefined);
+	const unknown = types.filter(name => name == undefined);
+	if (unknown.length > 0) throw new Error(`Failed to resolve OIDs to type names: ${unknown.join(", ")}`);
 
-	if (unknown.length > 0) {
-		throw new Error(`Failed to resolve OIDs to type names: ${unknown.join(", ")}`);
-	}
-
-	return canonicalise(db, typeNames as string[]);
+	return canonicalise(db, types);
 };

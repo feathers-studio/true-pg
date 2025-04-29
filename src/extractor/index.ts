@@ -152,7 +152,7 @@ const supported_kinds = [
 ] as const;
 
 export class Extractor {
-	private db: DbAdapter;
+	db: DbAdapter;
 
 	/**
 	 * @param connectionConfig - Connection string or configuration object for Postgres connection
@@ -170,14 +170,6 @@ export class Extractor {
 		}
 
 		this.db = new DbAdapter(pg, opts.pg ? true : false);
-	}
-
-	async canonicalise(types: string[]) {
-		return canonicalise(this.db, types);
-	}
-
-	async canonicaliseFromOids(oids: number[]) {
-		return canonicaliseFromOids(this.db, oids);
 	}
 
 	async getBuiltinTypes(): Promise<

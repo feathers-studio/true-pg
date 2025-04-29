@@ -1,6 +1,6 @@
 import type { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
-import { Canonical, canonicalise } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise.ts";
 
 // Note: isUpdatable is generally false for mat views and not typically stored directly
 export interface MaterializedViewColumn {
@@ -62,7 +62,7 @@ const extractMaterializedView = async (
 
 	// 2. Get canonical types
 	const definedTypes = columnQuery.map(row => row.definedType);
-	const canonicalTypes = await canonicalise(db, definedTypes);
+	const canonicalTypes = await db.canonicalise(definedTypes);
 
 	const columns: MaterializedViewColumn[] = columnQuery.map((row, index) => ({
 		name: row.name,

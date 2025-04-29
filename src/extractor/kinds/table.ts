@@ -3,7 +3,7 @@ import { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
 import commentMapQueryPart from "./parts/commentMapQueryPart.ts";
 import indexMapQueryPart from "./parts/indexMapQueryPart.ts";
-import { Canonical, canonicalise } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise.ts";
 
 export const updateActionMap = {
 	a: "NO ACTION",
@@ -353,7 +353,7 @@ const extractTable = async (db: DbAdapter, table: PgType<"table">): Promise<Tabl
 	const definedTypes = columnsQuery.map(row => row.definedType);
 
 	// Use canonicaliseTypes to get detailed type information
-	const canonicalTypes = await canonicalise(db, definedTypes);
+	const canonicalTypes = await db.canonicalise(definedTypes);
 
 	// Combine the column information with the canonical type information
 	const columns = columnsQuery.map((row: any, index: number) => ({

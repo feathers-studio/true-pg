@@ -1,6 +1,6 @@
 import type { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
-import { Canonical, canonicalise } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise.ts";
 
 export interface ViewColumn {
 	name: string;
@@ -55,7 +55,7 @@ const extractView = async (db: DbAdapter, view: PgType<"view">): Promise<ViewDet
 
 	// 2. Get canonical types
 	const definedTypes = columnQuery.map(row => row.definedType);
-	const canonicalTypes = await canonicalise(db, definedTypes);
+	const canonicalTypes = await db.canonicalise(definedTypes);
 
 	const columns: ViewColumn[] = columnQuery.map((row, index) => ({
 		name: row.name,

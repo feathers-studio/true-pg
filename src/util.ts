@@ -2,6 +2,19 @@ export const unreachable = (value: never): never => {
 	throw new Error(`Fatal: Reached unreachable code: ${value}`);
 };
 
+export class Deferred<T> {
+	resolve!: (value: T) => void;
+	reject!: (reason?: any) => void;
+	promise: Promise<T>;
+
+	constructor() {
+		const that: any = {};
+		this.promise = new Promise<T>((resolve, reject) => Object.assign(that, { resolve, reject }));
+		this.resolve = that.resolve;
+		this.reject = that.reject;
+	}
+}
+
 export const eq = <T>(a: T, b: T): boolean => {
 	if (a === b) return true;
 	if (a == null || b == null) return false;

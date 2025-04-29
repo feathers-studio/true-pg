@@ -1,8 +1,24 @@
 import Pg from "pg";
 import { PGlite as Pglite } from "@electric-sql/pglite";
+import { canonicalise, type Canonical } from "./canonicalise.ts";
 
 export class DbAdapter {
-	constructor(private client: Pg.Client | Pg.Pool | Pglite, private external?: boolean) {}
+	rawTypeCache: Map<string, Promise<Canonical>>;
+	canonicalCache: Map<string, Promise<Canonical>>;
+
+	constructor(private client: Pg.Client | Pg.Pool | Pglite, private external?: boolean) {
+		this.canonicalCache = new Map();
+		this.rawTypeCache = new Map();
+	}
+
+	clearCache() {
+		this.canonicalCache.clear();
+		this.rawTypeCache.clear();
+	}
+
+	async canonicalise(types: string[]) {
+		return await canonicalise(this, types, this.rawTypeCache, this.canonicalCache);
+	}
 
 	async connect() {
 		if (this.external) return;
@@ -14,6 +30,8 @@ export class DbAdapter {
 		} else if (this.client instanceof Pglite) {
 			// Pglite doesn't have an explicit connect method
 		}
+
+		this.clearCache();
 	}
 
 	/**
@@ -41,10 +59,12 @@ export class DbAdapter {
 	}
 
 	/**
-	 * Close the connection if needed
+	 * Close the connection and clear the cache
 	 */
 	async close() {
 		if (this.external) return;
+
+		this.clearCache();
 
 		if (this.client instanceof Pg.Pool) {
 			this.client.end();

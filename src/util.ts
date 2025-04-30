@@ -8,10 +8,10 @@ export class Deferred<T> {
 	promise: Promise<T>;
 
 	constructor() {
-		const that: any = {};
-		this.promise = new Promise<T>((resolve, reject) => Object.assign(that, { resolve, reject }));
-		this.resolve = that.resolve;
-		this.reject = that.reject;
+		this.promise = new Promise<T>((resolve, reject) => {
+			this.resolve = resolve;
+			this.reject = reject;
+		});
 	}
 }
 

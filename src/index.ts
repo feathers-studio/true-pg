@@ -194,9 +194,7 @@ const multifile = async (generators: createGenerator[], schemas: Record<string, 
 				const exists = await existsSync(filename);
 
 				if (exists) {
-					warnings.add(
-						`Skipping ${item.kind} "${item.name}": formatted name clashes. Wanted to create ${filename}`,
-					);
+					warnings.add(`Skipping ${item.kind} "${item.name}": formatted name clashes. Wanted to create ${filename}`);
 					continue;
 				}
 

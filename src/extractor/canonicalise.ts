@@ -513,7 +513,8 @@ export const canonicalise = async (
 		}),
 	);
 
-	return Promise.all(results);
+	const ret = await Promise.all(results);
+	return ret;
 };
 
 export const oidsToQualifiedNames = async (db: DbAdapter, oids: number[]): Promise<string[]> => {

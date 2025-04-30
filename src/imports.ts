@@ -47,9 +47,14 @@ export class Import {
 
 		return new Import({
 			from: files => {
-				const schema = files.children[t.schema]!;
-				const kind = schema.children[t.kind]!;
-				const type = kind.children[t.name]!;
+				const schema = files.children[t.schema];
+				const kind = schema?.children[t.kind];
+				const type = kind?.children[t.name];
+
+				if (!schema || !kind || !type) {
+					throw new Error(`Type ${t.kind}/${t.name} not found in schema "${t.schema}"`);
+				}
+
 				const path = `${files.name}/${schema.name}/${kind.kind}s/${type.name}.ts`;
 				return relative(dirname(opts.source), path);
 			},

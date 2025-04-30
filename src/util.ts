@@ -1,3 +1,5 @@
+export type MaybePromise<T> = T | Promise<T>;
+
 export const unreachable = (value: never): never => {
 	throw new Error(`Fatal: Reached unreachable code: ${value}`);
 };
@@ -157,3 +159,19 @@ export const parens = (str: string, type = "()"): string => `${type[0]!}${str}${
 export const quote = (str: string, using = '"') => `${using}${str.replaceAll(using, "\\" + using)}${using}`;
 
 export const quoteI = (str: string, using = '"') => (isIdentifierInvalid(str) ? quote(str, using) : str);
+
+export const removeNulls = <T>(o: T): T => {
+	for (const key in o) if (o[key] == null) delete o[key];
+	return o;
+};
+
+export const pos = (num: number) => (num < 0 ? undefined : num);
+
+export const minifyQuery = (query: string) => {
+	return query
+		.split("\n")
+		.map(line => line.slice(0, pos(line.indexOf("--"))))
+		.join("\n")
+		.replaceAll(/\s+/g, " ")
+		.trim();
+};

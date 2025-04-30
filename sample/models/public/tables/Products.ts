@@ -17,13 +17,13 @@ export interface Products {
 }
 
 export const products = z.object({
-	product_id: z.number().nullable().optional(),
+	product_id: z.number().optional(),
 	name: z.string(),
-	description: z.string().nullable().optional(),
+	description: z.string().optional(),
 	price: positive_numeric,
-	stock_quantity: z.number().nullable().optional(),
-	is_active: z.boolean().nullable().optional(),
-	validity: validity_period.nullable().optional(),
-	unknown_column: z.unknown().nullable().optional(),
-	created_at: z.coerce.date().nullable().optional(),
+	stock_quantity: z.number().optional(),
+	is_active: z.boolean().optional(),
+	validity: validity_period.optional(),
+	unknown_column: z.unknown().optional(),
+	created_at: z.coerce.date().optional(),
 });

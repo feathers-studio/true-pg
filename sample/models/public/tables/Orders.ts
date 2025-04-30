@@ -16,11 +16,11 @@ export interface Orders {
 }
 
 export const orders = z.object({
-	order_id: z.number().nullable().optional(),
+	order_id: z.number().optional(),
 	user_id: z.number(),
-	order_date: z.coerce.date().nullable().optional(),
-	status: order_status.nullable().optional(),
-	shipping_address: address.nullable().optional(),
-	unknown_column: z.unknown().nullable().optional(),
-	total_amount: positive_numeric.nullable().optional(),
+	order_date: z.coerce.date().optional(),
+	status: order_status.optional(),
+	shipping_address: address.optional(),
+	unknown_column: z.unknown().optional(),
+	total_amount: positive_numeric.optional(),
 });

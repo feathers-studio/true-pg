@@ -10,17 +10,17 @@ export interface Users {
 	username: string;
 	email: Email;
 	role: Generated<UserRole>;
-	shipping_address: Address | null;
+	shipping_address: Address[] | null;
 	unknown_column: unknown | null;
 	created_at: Generated<Date | null>;
 }
 
 export const users = z.object({
-	user_id: z.number().nullable().optional(),
+	user_id: z.number().optional(),
 	username: z.string(),
 	email: email,
-	role: user_role.nullable().optional(),
-	shipping_address: address.nullable().optional(),
-	unknown_column: z.unknown().nullable().optional(),
-	created_at: z.coerce.date().nullable().optional(),
+	role: user_role.optional(),
+	shipping_address: address.array().optional(),
+	unknown_column: z.unknown().optional(),
+	created_at: z.coerce.date().optional(),
 });

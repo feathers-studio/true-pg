@@ -3,9 +3,9 @@
 
 -- Insert Users
 INSERT INTO users (username, email, role, shipping_address) VALUES
-('alice_admin', 'alice@example.com', 'admin', ROW('123 Admin St', 'Admintown', 'A1A 1A1', 'CA')),
-('bob_customer', 'bob@example.com', 'customer', ROW('456 Customer Ave', 'Custville', 'C2C 2C2', 'US')),
-('charlie_customer', 'charlie@example.com', 'customer', ROW('789 Shopper Blvd', 'Shopburg', 'S3S 3S3', 'GB'));
+('alice_admin', 'alice@example.com', 'admin', ARRAY[ROW('123 Admin St', 'Admintown', 'A1A 1A1', 'CA')]::address[]),
+('bob_customer', 'bob@example.com', 'customer', ARRAY[ROW('456 Customer Ave', 'Custville', 'C2C 2C2', 'US')]::address[]),
+('charlie_customer', 'charlie@example.com', 'customer', ARRAY[ROW('789 Shopper Blvd', 'Shopburg', 'S3S 3S3', 'GB')]::address[]);
 
 -- Insert Products
 -- Product 1: Always available
@@ -25,7 +25,7 @@ INSERT INTO products (name, description, price, stock_quantity, is_active) VALUE
 -- Insert Orders
 -- Order 1: Bob buys a Laptop Pro and a Mouse
 INSERT INTO orders (user_id, status, shipping_address) VALUES
-((SELECT user_id FROM users WHERE username = 'bob_customer'), 'shipped', (SELECT shipping_address FROM users WHERE username = 'bob_customer')); -- Use Bob's default address
+((SELECT user_id FROM users WHERE username = 'bob_customer'), 'shipped', (SELECT shipping_address[1] FROM users WHERE username = 'bob_customer')); -- Use Bob's default address
 
 -- Order 2: Charlie buys a Mouse
 INSERT INTO orders (user_id, status, shipping_address) VALUES
@@ -33,12 +33,14 @@ INSERT INTO orders (user_id, status, shipping_address) VALUES
 
 -- Order 3: Bob buys the Holiday Bundle (assuming current date is within validity)
 INSERT INTO orders (user_id, status, shipping_address) VALUES
-((SELECT user_id FROM users WHERE username = 'bob_customer'), 'pending', (SELECT shipping_address FROM users WHERE username = 'bob_customer'));
+((SELECT user_id FROM users WHERE username = 'bob_customer'), 'pending', (SELECT shipping_address[1] FROM users WHERE username = 'bob_customer'));
 
 -- Insert Order Items
 -- Items for Order 1
 INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES
-(1, (SELECT product_id FROM products WHERE name = 'Laptop Pro'), 1, (SELECT price FROM products WHERE name = 'Laptop Pro')),
+(1, (SELECT product_id FROM products WHERE name = 'Laptop Pro'), 1, (SELECT price FROM products WHERE name = 'Laptop Pro'));
+
+INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES
 (1, (SELECT product_id FROM products WHERE name = 'Wireless Mouse'), 1, (SELECT price FROM products WHERE name = 'Wireless Mouse'));
 
 -- Items for Order 2

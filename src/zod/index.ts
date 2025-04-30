@@ -36,7 +36,6 @@ export const Zod = createGenerator(opts => {
 		out += quoteI(col.name);
 		const nullable = col.isNullable || col.generated === "BY DEFAULT" || col.defaultValue;
 		let type = generator.formatType(ctx, col.type, { nullable });
-		if (nullable) type += `.optional()`;
 		out += `: ${type}`;
 
 		return `\t${out},\n`;
@@ -46,7 +45,6 @@ export const Zod = createGenerator(opts => {
 		let out = quoteI(attr.name);
 
 		out += `: ${generator.formatType(ctx, attr.type, { nullable: attr.isNullable })}`;
-		if (attr.isNullable) out += ".optional()";
 
 		return out;
 	};
@@ -106,7 +104,7 @@ export const Zod = createGenerator(opts => {
 			}
 
 			if ("dimensions" in type) base += ".array()".repeat(type.dimensions);
-			if (attr?.nullable) base += ".nullable()";
+			if (attr?.nullable) base += ".optional()";
 
 			return base;
 		},
@@ -207,7 +205,6 @@ export const Zod = createGenerator(opts => {
 				for (const param of inputParams) {
 					// TODO: update imports for non-primitive types based on typeInfo.kind
 					out += "\t\t" + this.formatType(ctx, param.type, { nullable: param.hasDefault });
-					if (param.hasDefault) out += ".optional()";
 					out += `, // ${param.name}\n`;
 				}
 
@@ -304,9 +301,7 @@ export const Zod = createGenerator(opts => {
 			const parts: string[] = [];
 
 			parts.push(
-				schemas
-					.map(s => `import { ${generator.formatSchemaName(s.name)} } from "./${s.name}/index.ts";`)
-					.join("\n"),
+				schemas.map(s => `import { ${generator.formatSchemaName(s.name)} } from "./${s.name}/index.ts";`).join("\n"),
 			);
 
 			{
@@ -341,9 +336,9 @@ export const Zod = createGenerator(opts => {
 										else qualified = t.name;
 										qualified = quoteI(qualified);
 
-										return `\t${qualified}: ${this.formatSchemaName(schema.name)}[${quote(
-											t.kind + "s",
-										)}][${quote(t.name)}],`;
+										return `\t${qualified}: ${this.formatSchemaName(schema.name)}[${quote(t.kind + "s")}][${quote(
+											t.name,
+										)}],`;
 									}),
 									"\n",
 								);

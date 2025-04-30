@@ -12,7 +12,7 @@ export interface OrderItems {
 }
 
 export const order_items = z.object({
-	order_item_id: z.number().nullable().optional(),
+	order_item_id: z.number().optional(),
 	order_id: z.number(),
 	product_id: z.number(),
 	quantity: z.number(),

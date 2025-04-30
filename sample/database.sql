@@ -29,7 +29,7 @@ CREATE TABLE users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email email NOT NULL, -- Using the email domain
     role user_role NOT NULL DEFAULT 'customer', -- Using the user_role enum
-    shipping_address address, -- Using the address composite type
+    shipping_address address[], -- Using the address composite type
     unknown_column pg_catalog.oidvector, -- This exists to test that the extractor can handle types that don't have a default mapping
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

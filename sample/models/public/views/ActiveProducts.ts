@@ -11,9 +11,9 @@ export interface ActiveProducts {
 }
 
 export const active_products = z.object({
-	product_id: z.number().nullable().optional(),
-	name: z.string().nullable().optional(),
-	description: z.string().nullable().optional(),
-	price: positive_numeric.nullable().optional(),
-	stock_quantity: z.number().nullable().optional(),
+	product_id: z.number().optional(),
+	name: z.string().optional(),
+	description: z.string().optional(),
+	price: positive_numeric.optional(),
+	stock_quantity: z.number().optional(),
 });

@@ -1,6 +1,6 @@
-import Pg from "pg";
+import type Pg from "pg";
+import type { PGlite as Pglite } from "@electric-sql/pglite";
 
-import { PGlite as Pglite } from "@electric-sql/pglite";
 import { DbAdapter } from "./adapter.ts";
 
 import extractTable, { type TableDetails } from "./kinds/table.ts";
@@ -160,13 +160,16 @@ export class Extractor {
 	constructor(opts: { pg?: Pg.Client | Pg.Pool | Pglite; uri?: string; config?: Pg.ConnectionConfig }) {
 		let pg;
 		if (opts.pg) pg = opts.pg;
-		else if (opts.uri) pg = new Pg.Pool({ connectionString: opts.uri });
-		else if (opts.config) pg = new Pg.Pool(opts.config);
 		else {
-			console.error(
-				"One of these options are required in your config file: pg, uri, config. See documentation for more information.",
-			);
-			process.exit(1);
+			const Pool = import("pg").then(m => m.Pool);
+			if (opts.uri) pg = Pool.then(Pool => new Pool({ connectionString: opts.uri }));
+			else if (opts.config) pg = Pool.then(Pool => new Pool(opts.config));
+			else {
+				console.error(
+					"One of these options are required in your config file: pg, uri, config. See documentation for more information.",
+				);
+				process.exit(1);
+			}
 		}
 
 		this.db = new DbAdapter(pg, opts.pg ? true : false);

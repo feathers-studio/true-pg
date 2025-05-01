@@ -1,3 +1,5 @@
+export type MaybePromise<T> = T | Promise<T>;
+
 export const unreachable = (value: never): never => {
 	throw new Error(`Fatal: Reached unreachable code: ${value}`);
 };

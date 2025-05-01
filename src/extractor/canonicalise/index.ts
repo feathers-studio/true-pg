@@ -6,6 +6,7 @@ import { getEnumDetails } from "./enum.ts";
 import { getCompositeDetails } from "./composite.ts";
 import { getDomainDetails } from "./domain.ts";
 import { getRangeDetails } from "./range.ts";
+// import { time } from "../../util.ts";
 
 export { Canonical, type ExclusiveCanonProps };
 
@@ -26,8 +27,10 @@ export const canonicaliseQueue = async (
 	queue: QueueMember[],
 	resolveCache: Map<string, ResolvedBasicInfo> = new Map(),
 	canonCache: Map<string, ExclusiveCanonProps> = new Map(),
+	recursive = false,
 ): Promise<Canonical[]> => {
 	if (queue.length === 0) return [];
+	// const start = performance.now();
 
 	const parsed = queue.map(q => parseRawType(q.type));
 	const plain = [...new Set(parsed.filter(p => !resolveCache.has(p.plain)).map(p => p.plain))];
@@ -141,10 +144,12 @@ export const canonicaliseQueue = async (
 	);
 
 	if (internalQueue.length > 0) {
-		await canonicaliseQueue(db, internalQueue, resolveCache, canonCache);
+		await canonicaliseQueue(db, internalQueue, resolveCache, canonCache, true);
 	}
 
-	return queue.map(m => m.out);
+	const ret = queue.map(m => m.out);
+	// if (!recursive) console.log(`Canonicalise took ${time(start)}`);
+	return ret;
 };
 
 export const oidsToQualifiedNames = async (db: DbAdapter, oids: number[]): Promise<string[]> => {

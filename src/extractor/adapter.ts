@@ -1,14 +1,24 @@
-import Pg from "pg";
-import { PGlite as Pglite } from "@electric-sql/pglite";
+import type Pg from "pg";
+import type { PGlite as Pglite } from "@electric-sql/pglite";
 
 import { canonicaliseQueue } from "./canonicalise/index.ts";
 import type { Canonical, QueueMember } from "./canonicalise/index.ts";
+import type { MaybePromise } from "../util.ts";
+
+const isPgPool = (client: Pg.Client | Pg.Pool | Pglite): client is Pg.Pool =>
+	"totalCount" in client && typeof client.totalCount === "number";
+
+const isPgClient = (client: Pg.Client | Pg.Pool | Pglite): client is Pg.Client =>
+	"getTypeParser" in client && typeof client.getTypeParser === "function";
+
+const isPglite = (client: Pg.Client | Pg.Pool | Pglite): client is Pglite =>
+	"dumpDataDir" in client && typeof client.dumpDataDir === "function";
 
 export class DbAdapter {
 	queryCount = 0;
 	#resolveQueue: QueueMember[] = [];
 
-	constructor(private client: Pg.Client | Pg.Pool | Pglite, private external?: boolean) {}
+	constructor(private client: MaybePromise<Pg.Client | Pg.Pool | Pglite>, private external?: boolean) {}
 
 	resetQueryCount() {
 		this.queryCount = 0;
@@ -76,11 +86,13 @@ export class DbAdapter {
 		this.reset();
 		if (this.external) return;
 
-		if (this.client instanceof Pg.Pool) {
+		const client = await this.client;
+
+		if (isPgPool(client)) {
 			// queries will automatically checkout a client and return it to the pool
-		} else if (this.client instanceof Pg.Client) {
-			return this.client.connect();
-		} else if (this.client instanceof Pglite) {
+		} else if (isPgClient(client)) {
+			return client.connect();
+		} else if (isPglite(client)) {
 			// Pglite doesn't have an explicit connect method
 		}
 	}
@@ -91,12 +103,20 @@ export class DbAdapter {
 	async query<R, I extends any[] = []>(text: string, params?: I) {
 		this.queryCount++;
 
+		const client = await this.client;
+
+		if (!process.env.DEBUG) {
+			// @ts-expect-error The two clients can process our query types similarly
+			const result = await client.query(text, params);
+			return result.rows as R[];
+		}
+
 		let stack;
 		try {
 			stack = new Error().stack;
 			stack = stack?.split("\n").slice(3).join("\n");
 			// @ts-expect-error The two clients can process our query types similarly
-			const result = await this.client.query(text, params);
+			const result = await client.query(text, params);
 			return result.rows as R[];
 		} catch (error) {
 			if (error instanceof Error) {
@@ -104,7 +124,7 @@ export class DbAdapter {
 				console.error("Query:", text);
 				console.error("Parameters:", params);
 				console.error("\nStack trace:");
-				console.error(stack);
+				console.error(stack ?? error.stack);
 				console.error("\nError details:", error.message);
 				process.exit(1);
 			} else throw error;
@@ -118,12 +138,14 @@ export class DbAdapter {
 		this.reset();
 		if (this.external) return;
 
-		if (this.client instanceof Pg.Pool) {
-			this.client.end();
-		} else if (this.client instanceof Pg.Client) {
-			await this.client.end();
-		} else if (this.client instanceof Pglite) {
-			await this.client.close();
+		const client = await this.client;
+
+		if (isPgPool(client)) {
+			await client.end();
+		} else if (isPgClient(client)) {
+			await client.end();
+		} else if (isPglite(client)) {
+			await client.close();
 		}
 	}
 }

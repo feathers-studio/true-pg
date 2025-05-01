@@ -6,6 +6,7 @@ import type { Canonical, QueueMember } from "./canonicalise/index.ts";
 
 export class DbAdapter {
 	resolveQueue: QueueMember[] = [];
+	queryCount = 0;
 
 	constructor(private client: Pg.Client | Pg.Pool | Pglite, private external?: boolean) {}
 
@@ -13,8 +14,13 @@ export class DbAdapter {
 		this.resolveQueue = [];
 	}
 
+	resetQueryCount() {
+		this.queryCount = 0;
+	}
+
 	reset() {
 		this.resetQueue();
+		this.resetQueryCount();
 	}
 
 	enqueue(type: string) {
@@ -34,6 +40,7 @@ export class DbAdapter {
 	}
 
 	async connect() {
+		this.reset();
 		if (this.external) return;
 
 		if (this.client instanceof Pg.Pool) {
@@ -43,14 +50,14 @@ export class DbAdapter {
 		} else if (this.client instanceof Pglite) {
 			// Pglite doesn't have an explicit connect method
 		}
-
-		this.reset();
 	}
 
 	/**
 	 * Execute a read query and return just the rows
 	 */
 	async query<R, I extends any[] = []>(text: string, params?: I) {
+		this.queryCount++;
+
 		let stack;
 		try {
 			stack = new Error().stack;
@@ -75,9 +82,8 @@ export class DbAdapter {
 	 * Close the connection and clear the cache
 	 */
 	async close() {
-		if (this.external) return;
-
 		this.reset();
+		if (this.external) return;
 
 		if (this.client instanceof Pg.Pool) {
 			this.client.end();

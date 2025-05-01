@@ -277,8 +277,8 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	const extractor = new Extractor(opts);
 
 	const start = performance.now();
-	const schemas = await extractor.extractSchemas();
-	console.log("Extracted schemas %s\n", time(start));
+	const { schemas, queryCount } = await extractor.extractSchemas();
+	console.log("Extracted schemas %s (made %s queries)\n", time(start), queryCount);
 
 	console.info("Generators enabled: %s\n", validated.generators.join(", "));
 

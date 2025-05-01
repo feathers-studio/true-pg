@@ -218,7 +218,10 @@ export class Extractor {
 	 * @param options - Optional options
 	 * @returns A record of all the schemas extracted, indexed by schema name.
 	 */
-	async extractSchemas(options?: ExtractSchemaOptions): Promise<Record<string, Schema>> {
+	async extractSchemas(options?: ExtractSchemaOptions): Promise<{
+		schemas: Record<string, Schema>;
+		queryCount: number;
+	}> {
 		await this.db.connect();
 		const db = this.db;
 
@@ -275,15 +278,15 @@ export class Extractor {
 			(schemas[p.schemaName]![p.kind] as DetailsMap[typeof p.kind][]) = [...schemas[p.schemaName]![p.kind], p];
 		}
 
-		const result = schemas;
-
 		// resolve all canonical types and patch the results into their placeholders
 		await db.resolve();
+
+		const queryCount = db.queryCount;
 
 		options?.onProgressEnd?.();
 
 		await db.close();
 
-		return result;
+		return { schemas, queryCount };
 	}
 }

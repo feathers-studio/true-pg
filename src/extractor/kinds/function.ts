@@ -171,7 +171,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (row.arg_names && !row.arg_modes) row.arg_modes = row.arg_names.map(() => "i");
 
 			const argModes = row.arg_modes?.map(mode => parameterModeMap[mode]) ?? [];
-			const canonical_arg_types = row.arg_types ? row.arg_types.map(db.enqueue) : [];
+			const canonical_arg_types = row.arg_types ? row.arg_types.map(type => db.enqueue(type)) : [];
 
 			let returnType: FunctionReturnType;
 
@@ -180,7 +180,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (tableMatch) {
 				const columnDefs = parsePostgresTableDefinition(row.declared_return_type);
 				const columnTypes = columnDefs.map(col => col.type);
-				const canonicalColumnTypes = columnTypes.map(db.enqueue);
+				const canonicalColumnTypes = columnTypes.map(type => db.enqueue(type));
 
 				returnType = {
 					kind: FunctionReturnTypeKind.InlineTable,

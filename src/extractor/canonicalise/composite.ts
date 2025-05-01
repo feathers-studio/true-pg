@@ -60,31 +60,29 @@ export type { ExclusiveComposite };
 
 export async function getCompositeDetails(
 	db: DbAdapter,
-	canonicalise: (types: string[]) => Promise<Canonical[]>,
-	relids: { typrelid: number }[],
+	enqueue: (types: string) => Canonical,
+	entries: { typrelid: number; canonical_name: string }[],
 ): Promise<ExclusiveComposite[]> {
-	if (relids.length === 0) return [];
+	if (entries.length === 0) return [];
 
-	const results = await db.query<QueryResult, QueryParams>(query, [relids.map(r => r.typrelid)]);
+	const results = await db.query<QueryResult, QueryParams>(query, [entries.map(r => r.typrelid)]);
 
-	return Promise.all(
-		results.map(async result => {
-			const attributeTypes = result.attributes.map(attr => attr.type_name);
-			const canonicalAttributeTypes = await canonicalise(attributeTypes); // Recursive call
-			const attributes: Canonical.CompositeAttribute[] = result.attributes.map((attr, index) => {
-				return removeNulls({
-					name: attr.name,
-					index: attr.index,
-					type: canonicalAttributeTypes[index]!,
-					comment: attr.comment,
-					defaultValue: attr.defaultValue,
-					isNullable: attr.isNullable,
-					isIdentity: attr.isIdentity,
-					generated: attr.generated,
-				});
+	return results.map((result, index) => {
+		const attributes: Canonical.CompositeAttribute[] = result.attributes.map((attr, index) => {
+			const canonical = enqueue(attr.type_name);
+
+			return removeNulls({
+				name: attr.name,
+				index: attr.index,
+				type: canonical,
+				comment: attr.comment,
+				defaultValue: attr.defaultValue,
+				isNullable: attr.isNullable,
+				isIdentity: attr.isIdentity,
+				generated: attr.generated,
 			});
+		});
 
-			return { kind: Canonical.Kind.Composite, attributes };
-		}),
-	);
+		return { kind: Canonical.Kind.Composite, canonical_name: entries[index]!.canonical_name, attributes };
+	});
 }

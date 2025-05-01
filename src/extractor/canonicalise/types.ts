@@ -76,7 +76,7 @@ export type Canonical =
 	| Canonical.Range
 	| Canonical.Pseudo;
 
-type Exclusive<T> = Omit<T, Exclude<keyof Canonical.Abstract, "kind">>;
+type Exclusive<T> = Omit<T, Exclude<keyof Canonical.Abstract, "kind" | "canonical_name">>;
 
 export type ExclusiveBase = Exclusive<Canonical.Base>;
 export type ExclusiveEnum = Exclusive<Canonical.Enum>;

@@ -1,6 +1,6 @@
 import { Canonical, type ExclusiveCanonProps } from "./types.ts";
 import { DbAdapter } from "../adapter.ts";
-import { Deferred, type MaybePromise } from "../../util.ts";
+import { Deferred, unreachable, type MaybePromise } from "../../util.ts";
 import { resolveBasicInfo, type ResolvedBasicInfo } from "./resolve.ts";
 import { parseRawType } from "./parse.ts";
 import type { ParsedType } from "./parse.ts";
@@ -11,119 +11,87 @@ import { getRangeDetails } from "./range.ts";
 
 export { Canonical, type ExclusiveCanonProps };
 
-type Unresolved = { parsed: ParsedType; deferred: Deferred<Canonical> };
+export interface QueueMember {
+	type: string;
+	out: Canonical;
+}
 
-// The new strategy is to minimise the effort spent on resolving types
-// Don't care about keeping track of the order of types
-// Ensure that all types are already cached or will be cached by the end of the function
+// The final boss strategy
+//
+// Insert placeholder objects wherever a Canonical is needed
+// After extracting all tables, views, functions, etc. resolve all Canonicals
 // Then map over the input types and wait for all cached promises to resolve
+// Finally patch all Canonicals with resolved values
 
-export const canonicalise = async (
-	db: DbAdapter,
-	types: string[],
-	plainTypeCache: Map<string, Promise<Canonical>>,
-	canonicalCache: Map<string, Promise<ExclusiveCanonProps>>,
-): Promise<Canonical[]> => {
-	if (types.length === 0) return [];
+export const canonicaliseQueue = async (db: DbAdapter, queue: QueueMember[]): Promise<Canonical[]> => {
+	if (queue.length === 0) return [];
 
-	// unresolved types, awaiting resolution
-	const unresolved: Unresolved[] = [];
+	const parsed = queue.map(q => parseRawType(q.type));
+	const plain = parsed.map(p => p.plain);
+	const resolved = await resolveBasicInfo(db, plain);
 
-	const unique = new Set<string>();
-
-	for (const type of types) {
-		if (!plainTypeCache.has(type)) {
-			// strip modifiers and brackets
-			const parsed = parseRawType(type);
-
-			const deferred = new Deferred<Canonical>();
-			// cache promise immediately for other calls to resolve the same type
-			plainTypeCache.set(parsed.plain, deferred.promise);
-
-			// keep track of parsed types to include its modifiers and dimensions later
-			unresolved.push({ parsed, deferred });
-
-			// for now we only need unique base types to move forward from here
-			unique.add(parsed.plain);
-		}
-	}
-
-	const uniqueArray = Array.from(unique);
-
-	// resolve whole batch at once
-	const resolved = await resolveBasicInfo(db, uniqueArray);
-
-	const resolvedMap = new Map<string, ResolvedBasicInfo>();
-	for (const r of resolved) resolvedMap.set(r.original_name, r);
-
-	type ResolvedAndDeferred = ResolvedBasicInfo & { deferred: Deferred<ExclusiveCanonProps> };
-
-	type Kind = Exclude<Canonical.Kind, Canonical.Kind.Unknown>;
-
-	// split by kind
-	const kinds: Record<Kind, ResolvedAndDeferred[]> = {
-		[Canonical.Kind.Base]: [],
-		[Canonical.Kind.Enum]: [],
-		[Canonical.Kind.Composite]: [],
-		[Canonical.Kind.Domain]: [],
-		[Canonical.Kind.Range]: [],
-		[Canonical.Kind.Pseudo]: [],
-	};
-
-	for (const r of resolved) {
-		if (canonicalCache.has(r.canonical_name)) continue;
-
-		const deferred = new Deferred<ExclusiveCanonProps>();
-		canonicalCache.set(r.canonical_name, deferred.promise);
-
-		if (r.kind === Canonical.Kind.Unknown) {
-			throw new Error(`Unknown kind "${r.schema}.${r.name}" (original: ${r.original_name}, oid: ${r.oid})`);
-		}
-
-		// I want to do r.deferred = deferred, but type-safety...
-		kinds[r.kind].push(Object.assign(r, { deferred }));
-	}
-
-	const _canonicalise = (types: string[]) => canonicalise(db, types, plainTypeCache, canonicalCache);
-
-	// get details for each kind
-	const kind_details: Record<Kind, MaybePromise<ExclusiveCanonProps[]>> = {
-		[Canonical.Kind.Base]: kinds[Canonical.Kind.Base].map(r => ({ kind: Canonical.Kind.Base })),
-		[Canonical.Kind.Enum]: getEnumDetails(db, kinds[Canonical.Kind.Enum]),
-		[Canonical.Kind.Composite]: getCompositeDetails(db, _canonicalise, kinds[Canonical.Kind.Composite]),
-		[Canonical.Kind.Domain]: getDomainDetails(db, _canonicalise, kinds[Canonical.Kind.Domain]),
-		[Canonical.Kind.Range]: getRangeDetails(db, _canonicalise, kinds[Canonical.Kind.Range]),
-		[Canonical.Kind.Pseudo]: kinds[Canonical.Kind.Pseudo].map(r => ({ kind: Canonical.Kind.Pseudo })),
-	};
-
-	const details_promises = [];
-
-	for (const kind in kind_details) {
-		const key = kind as Kind;
-		const resolved = kinds[key];
-
-		details_promises.push(
-			Promise.resolve(kind_details[key]).then(details => {
-				for (let i = 0; i < details.length; i++) {
-					const { deferred } = resolved[i]!;
-					deferred.resolve(details[i]!);
-				}
-			}),
+	const unknown = resolved.filter(r => r.kind === Canonical.Kind.Unknown);
+	if (unknown.length > 0) {
+		throw new Error(
+			"Received kind 'unknown', could not resolve types: " + unknown.map(u => u.canonical_name).join(", "),
 		);
 	}
 
-	// await all resolutions at once in parallel
-	await Promise.all(details_promises);
+	const internalQueue: QueueMember[] = [];
+	const q = (types: string): Canonical => {
+		const member: QueueMember = { type: types, out: {} as Canonical };
+		internalQueue.push(member);
+		return member.out;
+	};
 
-	/* ---- We've guaranteed that all canonical types are resolved now ---- */
+	const batches = {
+		bases: [] as ResolvedBasicInfo[],
+		enums: [] as ResolvedBasicInfo[],
+		composites: [] as ResolvedBasicInfo[],
+		domains: [] as ResolvedBasicInfo[],
+		ranges: [] as ResolvedBasicInfo[],
+		pseudos: [] as ResolvedBasicInfo[],
+	};
+
+	// split in one loop instead of 4 filters
+	for (const r of resolved) {
+		if (r.kind === Canonical.Kind.Base) batches.bases.push(r);
+		if (r.kind === Canonical.Kind.Enum) batches.enums.push(r);
+		if (r.kind === Canonical.Kind.Composite) batches.composites.push(r);
+		if (r.kind === Canonical.Kind.Domain) batches.domains.push(r);
+		if (r.kind === Canonical.Kind.Range) batches.ranges.push(r);
+		if (r.kind === Canonical.Kind.Pseudo) batches.pseudos.push(r);
+	}
+
+	const canonicalMap = new Map<string, ExclusiveCanonProps>();
+
+	{
+		const Kind = Canonical.Kind;
+
+		const bases = batches.bases.map(b => ({ kind: Kind.Base, canonical_name: b.canonical_name } as const));
+		const [enums, composites, domains, ranges] = await Promise.all([
+			getEnumDetails(db, batches.enums),
+			getCompositeDetails(db, q, batches.composites),
+			getDomainDetails(db, q, batches.domains),
+			getRangeDetails(db, q, batches.ranges),
+		] as const);
+		const pseudo = batches.pseudos.map(p => ({ kind: Kind.Pseudo, canonical_name: p.canonical_name } as const));
+
+		for (const b of bases) canonicalMap.set(b.canonical_name, b);
+		for (const e of enums) canonicalMap.set(e.canonical_name, e);
+		for (const c of composites) canonicalMap.set(c.canonical_name, c);
+		for (const d of domains) canonicalMap.set(d.canonical_name, d);
+		for (const r of ranges) canonicalMap.set(r.canonical_name, r);
+		for (const p of pseudo) canonicalMap.set(p.canonical_name, p);
+	}
 
 	await Promise.all(
-		unresolved.map(async u => {
-			const info = resolvedMap.get(u.parsed.plain);
-			if (!info) throw new Error(`Type ${u.parsed.plain} not found in resolved map`);
+		resolved.map(async (info, index) => {
+			const p = parsed[index]!;
+			const m = queue[index]!;
 
 			try {
-				const dimensions = u.parsed.dimensions + info.internal_dimensions;
+				const dimensions = p.dimensions + info.internal_dimensions;
 
 				const common = {
 					kind: info.kind,
@@ -134,38 +102,34 @@ export const canonicalise = async (
 					canonical_name: info.canonical_name,
 					schema: info.schema,
 					name: info.name,
-					original_type: u.parsed.original,
-					modifiers: u.parsed.modifiers,
+					original_type: p.original,
+					modifiers: p.modifiers,
 					dimensions,
 				};
 
-				const exclusive = await canonicalCache.get(info.canonical_name);
-				if (!exclusive) throw new Error(`Type ${info.canonical_name} not found in canonical cache`);
+				const kind = info.kind;
+
+				if (kind === Canonical.Kind.Unknown) {
+					throw new Error(`Unknown type: ${info.canonical_name}`);
+				}
+
+				const exclusive = canonicalMap.get(info.canonical_name);
+
+				if (!exclusive) {
+					throw new Error(`(Unreachable) Could not find canonical type for ${info.canonical_name}`);
+				}
 
 				const result = { ...common, ...exclusive } as Canonical;
-
-				/* ---- We've guaranteed that all input types (w/ modifiers and dimensions) are resolved now ---- */
-				u.deferred.resolve(result);
+				Object.assign(m.out, result);
 			} catch (error) {
-				// concurrent canonicalise calls that are awaiting this promise will be rejected
-				u.deferred.reject(error);
-				// delete the cache entry so that subsequent calls to canonicalise may retry
-				canonicalCache.delete(info.canonical_name);
 				throw error;
 			}
 		}),
 	);
 
-	// since we've already resolved and cached all types, we can just return the cached results
+	if (internalQueue.length > 0) {
+		await canonicaliseQueue(db, internalQueue);
+	}
 
-	const results = await Promise.all(
-		types.map(async t => {
-			const cached = plainTypeCache.get(t);
-			if (!cached) throw new Error(`Type ${t} not found in raw type cache`);
-			const result = await cached;
-			return result;
-		}),
-	);
-
-	return results;
+	return queue.map(m => m.out);
 };

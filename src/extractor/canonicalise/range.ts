@@ -24,37 +24,35 @@ export type { ExclusiveRange };
  */
 export async function getRangeDetails(
 	db: DbAdapter,
-	canonicalise: (types: string[]) => Promise<Canonical[]>,
-	input: { oid: number; canonical_name: string }[],
+	enqueue: (types: string) => Canonical,
+	entries: { oid: number; canonical_name: string }[],
 ): Promise<ExclusiveRange[]> {
-	if (input.length === 0) return [];
+	if (entries.length === 0) return [];
 
-	const oids = input.map(i => i.oid);
+	const oids = entries.map(i => i.oid);
 
 	const results = await db.query<QueryResult, QueryParams>(query, [oids]);
 
-	if (results.length !== input.length) {
+	if (results.length !== entries.length) {
 		throw new Error("Mismatch between input range count and range detail results count.");
 	}
 
-	return Promise.all(
-		results.map(async (result, index) => {
-			const { canonical_name } = input[index]!;
-			const subtypeName = result.name;
+	return results.map((result, index) => {
+		const { canonical_name } = entries[index]!;
+		const subtypeName = result.name;
 
-			if (!subtypeName) {
-				throw new Error(`Range ${canonical_name} (Subtype OID: ${oids[index]}) lacks a resolved subtype name.`);
-			}
+		if (!subtypeName) {
+			throw new Error(`Range ${canonical_name} (Subtype OID: ${oids[index]}) lacks a resolved subtype name.`);
+		}
 
-			const canonicalSubtypes = (await canonicalise([subtypeName]))[0];
+		const canonicalSubtype = enqueue(subtypeName);
 
-			if (!canonicalSubtypes) {
-				throw new Error(
-					`Failed to canonicalise subtype "${subtypeName}" for Range ${canonical_name} (Subtype OID: ${oids[index]}).`,
-				);
-			}
+		if (!canonicalSubtype) {
+			throw new Error(
+				`Failed to canonicalise subtype "${subtypeName}" for Range ${canonical_name} (Subtype OID: ${oids[index]}).`,
+			);
+		}
 
-			return { kind: Canonical.Kind.Range, range_subtype: canonicalSubtypes };
-		}),
-	);
+		return { kind: Canonical.Kind.Range, canonical_name, range_subtype: canonicalSubtype };
+	});
 }

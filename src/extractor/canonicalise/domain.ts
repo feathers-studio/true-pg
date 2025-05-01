@@ -68,35 +68,27 @@ export type { ExclusiveDomain };
  */
 export async function getDomainDetails(
 	db: DbAdapter,
-	canonicalise: (types: string[]) => Promise<Canonical[]>,
-	input: { oid: number; canonical_name: string }[],
+	enqueue: (types: string) => Canonical,
+	entries: { oid: number; canonical_name: string }[],
 ): Promise<ExclusiveDomain[]> {
-	if (input.length === 0) return [];
+	if (entries.length === 0) return [];
 
-	const results = await db.query<QueryResult, QueryParams>(query, [input.map(i => i.oid)]);
+	const results = await db.query<QueryResult, QueryParams>(query, [entries.map(i => i.oid)]);
 
 	// Basic check for result length mismatch
-	if (results.length !== input.length) {
+	if (results.length !== entries.length) {
 		throw new Error("Mismatch between input domain count and domain detail results count.");
 	}
 
-	return Promise.all(
-		results.map(async (result, index) => {
-			const { canonical_name, oid } = input[index]!;
-			const name = result.name;
+	return results.map((result, index) => {
+		const { canonical_name, oid } = entries[index]!;
+		const name = result.name;
 
-			if (!name) {
-				throw new Error(`Domain ${canonical_name} (OID: ${oid}) lacks a resolved base type name.`);
-			}
+		if (!name) {
+			throw new Error(`Could not resolve base type for domain ${canonical_name} (OID: ${oid}).`);
+		}
 
-			// Canonicalise expects an array of names
-			const canonicalBaseTypes = await canonicalise([name]);
-			if (canonicalBaseTypes.length === 0 || !canonicalBaseTypes[0]) {
-				// Handle canonicalization failure
-				throw new Error(`Failed to canonicalise base type "${name}" for Domain ${canonical_name} (OID: ${oid}).`);
-			}
-
-			return { kind: Canonical.Kind.Domain, domain_base_type: canonicalBaseTypes[0]! };
-		}),
-	);
+		const canonicalBaseType = enqueue(name);
+		return { kind: Canonical.Kind.Domain, canonical_name, domain_base_type: canonicalBaseType };
+	});
 }

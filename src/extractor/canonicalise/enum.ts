@@ -23,9 +23,16 @@ type QueryParams = [number[]];
 export type { ExclusiveEnum };
 
 /** Fetches enum values for given enum type OIDs */
-export async function getEnumDetails(db: DbAdapter, entries: { oid: number }[]): Promise<ExclusiveEnum[]> {
+export async function getEnumDetails(
+	db: DbAdapter,
+	entries: { oid: number; canonical_name: string }[],
+): Promise<ExclusiveEnum[]> {
 	if (entries.length === 0) return [];
 
 	const results = await db.query<QueryResult, QueryParams>(query, [entries.map(o => o.oid)]);
-	return results.map(r => ({ kind: Canonical.Kind.Enum, enum_values: r.values }));
+	return results.map((r, i) => ({
+		kind: Canonical.Kind.Enum,
+		canonical_name: entries[i]!.canonical_name,
+		enum_values: r.values,
+	}));
 }

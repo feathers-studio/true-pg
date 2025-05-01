@@ -5,34 +5,67 @@ import { canonicaliseQueue } from "./canonicalise/index.ts";
 import type { Canonical, QueueMember } from "./canonicalise/index.ts";
 
 export class DbAdapter {
-	resolveQueue: QueueMember[] = [];
 	queryCount = 0;
+	#resolveQueue: QueueMember[] = [];
 
 	constructor(private client: Pg.Client | Pg.Pool | Pglite, private external?: boolean) {}
-
-	resetQueue() {
-		this.resolveQueue = [];
-	}
 
 	resetQueryCount() {
 		this.queryCount = 0;
 	}
 
-	reset() {
-		this.resetQueue();
-		this.resetQueryCount();
+	resetQueue() {
+		this.#resolveQueue = [];
 	}
 
+	reset() {
+		this.resetQueryCount();
+		this.resetQueue();
+	}
+
+	/**
+	 * Eagerly returns a placeholder for a type.
+	 *
+	 * After queueing all types, call {@link resolve} to resolve them.
+	 * Calling {@link resolve} patches the results into their placeholders.
+	 *
+	 * Example:
+	 *
+	 * ```ts
+	 * const db = new DbAdapter(client);
+	 *
+	 * // all placeholders are empty objects
+	 * const placeholder1 = db.enqueue("my_type");
+	 * const placeholder2 = db.enqueue("my_other_type");
+	 * const placeholder3 = db.enqueue("my_third_type");
+	 * console.log(placeholder1); // {}
+	 * console.log(placeholder2); // {}
+	 * console.log(placeholder3); // {}
+	 *
+	 * // all placeholders are now populated with the canonical type
+	 * await db.resolve(); // this also clears the internal queue
+	 * console.log(placeholder1); // { ... }
+	 * console.log(placeholder2); // { ... }
+	 * console.log(placeholder3); // { ... }
+	 * ```
+	 */
 	enqueue(type: string) {
 		const member: QueueMember = { type, out: {} as Canonical };
-		this.resolveQueue.push(member);
+		this.#resolveQueue.push(member);
 		return member.out;
 	}
 
+	/**
+	 * Resolves all enqueued types.
+	 *
+	 * Call this method to resolve and patch all types enqueued using {@link enqueue}.
+	 *
+	 * @see {@link enqueue}
+	 */
 	async resolve() {
-		const results = await canonicaliseQueue(this, this.resolveQueue);
-		for (let i = 0; i < this.resolveQueue.length; i++) {
-			this.resolveQueue[i]!.out = results[i]!;
+		const results = await canonicaliseQueue(this, this.#resolveQueue);
+		for (let i = 0; i < this.#resolveQueue.length; i++) {
+			this.#resolveQueue[i]!.out = results[i]!;
 		}
 
 		this.resetQueue();

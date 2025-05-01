@@ -1,4 +1,5 @@
-import { dirname, relative } from "node:path/posix";
+import path from "node:path";
+const { dirname, relative } = path.posix;
 
 import type { Canonical } from "./extractor/index.ts";
 import type { FunctionReturnType } from "./extractor/index.ts";
@@ -105,10 +106,7 @@ export class ImportList {
 
 			// unique named imports from this module
 			const namedImports = items
-				.flatMap(
-					s =>
-						s.namedImports?.map(i => (typeof i === "string" ? { name: i, typeOnly: s.typeOnly } : i)) ?? [],
-				)
+				.flatMap(s => s.namedImports?.map(i => (typeof i === "string" ? { name: i, typeOnly: s.typeOnly } : i)) ?? [])
 				.filter((imp, index, arr) => {
 					if (arr.findIndex(i => eq(i, imp)) !== index) return false;
 					return true;
@@ -116,9 +114,7 @@ export class ImportList {
 
 			const allTypeOnly = namedImports.every(i => i.typeOnly);
 
-			const namedImportPart = namedImports
-				.map(i => (!allTypeOnly && i.typeOnly ? "type " : "") + i.name)
-				.join(", ");
+			const namedImportPart = namedImports.map(i => (!allTypeOnly && i.typeOnly ? "type " : "") + i.name).join(", ");
 
 			const namedImportLine = namedImportPart
 				? `import ${allTypeOnly ? "type " : ""}{ ${namedImportPart} } from "${from}";`
@@ -130,13 +126,9 @@ export class ImportList {
 			const starImportLines = stars.map(i => `import ${i.typeOnly ? "type " : ""}* as ${i.star} from "${from}";`);
 
 			// all default imports from this module
-			const defaults = items
-				.filter(i => i.default)
-				.filter((i, index, arr) => arr.findIndex(j => eq(j, i)) === index);
+			const defaults = items.filter(i => i.default).filter((i, index, arr) => arr.findIndex(j => eq(j, i)) === index);
 
-			const defaultImportLines = defaults.map(
-				i => `import ${i.typeOnly ? "type " : ""}${i.default} from "${from}";`,
-			);
+			const defaultImportLines = defaults.map(i => `import ${i.typeOnly ? "type " : ""}${i.default} from "${from}";`);
 
 			const sideEffectImports = items.find(i => !i.default && !i.star && !i.namedImports?.length);
 			const sideEffectImportLine = sideEffectImports ? `import "${sideEffectImports.from}";` : undefined;

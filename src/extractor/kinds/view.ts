@@ -1,6 +1,6 @@
 import type { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 export interface ViewColumn {
 	name: string;
@@ -17,7 +17,7 @@ export interface ViewDetails extends PgType<"view"> {
 }
 
 const extractView = async (db: DbAdapter, view: PgType<"view">): Promise<ViewDetails> => {
-	// 1. Query for columns (information_schema.columns + pg_attribute)
+	// Query for columns (information_schema.columns + pg_attribute)
 	const columnQuery = await db.query<
 		{
 			name: string;
@@ -53,19 +53,15 @@ const extractView = async (db: DbAdapter, view: PgType<"view">): Promise<ViewDet
 		[view.name, view.schemaName],
 	);
 
-	// 2. Get canonical types
-	const definedTypes = columnQuery.map(row => row.definedType);
-	const canonicalTypes = await db.canonicalise(definedTypes);
-
-	const columns: ViewColumn[] = columnQuery.map((row, index) => ({
+	const columns: ViewColumn[] = columnQuery.map(row => ({
 		name: row.name,
-		type: canonicalTypes[index]!,
+		type: db.enqueue(row.definedType),
 		isNullable: row.isNullable,
 		isUpdatable: row.isUpdatable,
 		ordinalPosition: row.ordinalPosition,
 	}));
 
-	// 3. Query for view definition, comment, and other properties
+	// Query for view definition, comment, and other properties
 	const viewInfoQuery = await db.query<
 		{
 			comment: string | null;

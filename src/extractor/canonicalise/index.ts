@@ -146,3 +146,35 @@ export const canonicaliseQueue = async (
 
 	return queue.map(m => m.out);
 };
+
+export const oidsToQualifiedNames = async (db: DbAdapter, oids: number[]): Promise<string[]> => {
+	if (oids.length === 0) return [];
+
+	const query = `
+		SELECT
+			input.ord,
+			format('%I.%I', n.nspname, t.typname) AS qualified_name
+		-- Use unnest WITH ORDINALITY because SQL doesn't guarantee order of SELECT results
+		FROM unnest($1::oid[]) WITH ORDINALITY AS input(oid, ord)
+		JOIN pg_type t ON t.oid = input.oid
+		JOIN pg_namespace n ON t.typnamespace = n.oid
+		ORDER BY input.ord;
+	`;
+
+	const results = await db.query<{ ord: number; qualified_name: string }, [number[]]>(query, [oids]);
+	return results.map(r => r.qualified_name);
+};
+
+export const canonicaliseFromOids = async (db: DbAdapter, oids: number[]): Promise<Canonical[]> => {
+	if (oids.length === 0) return [];
+
+	const types = await oidsToQualifiedNames(db, oids);
+
+	const unknown = types.filter(name => name == undefined);
+	if (unknown.length > 0) throw new Error(`Failed to resolve OIDs to type names: ${unknown.join(", ")}`);
+
+	return canonicaliseQueue(
+		db,
+		types.map(t => ({ type: t, out: {} as Canonical })),
+	);
+};

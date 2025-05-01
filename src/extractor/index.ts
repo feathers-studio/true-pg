@@ -17,7 +17,7 @@ import fetchTypes from "./fetchTypes.ts";
 import type { Kind, PgType } from "./pgtype.ts";
 export { pgTypeKinds, type PgType, type Kind } from "./pgtype.ts";
 
-import { canonicalise, Canonical, canonicaliseFromOids } from "./canonicalise.ts";
+import { Canonical } from "./canonicalise/index.ts";
 export { Canonical };
 
 export type {
@@ -275,15 +275,15 @@ export class Extractor {
 			(schemas[p.schemaName]![p.kind] as DetailsMap[typeof p.kind][]) = [...schemas[p.schemaName]![p.kind], p];
 		}
 
-		const result =
-			//  options?.resolveViews
-			// 	? resolveViewColumns(schemas)
-			// :
-			schemas;
+		const result = schemas;
+
+		// resolve all canonical types and patch the results into their placeholders
+		await db.resolve();
 
 		options?.onProgressEnd?.();
 
 		await db.close();
+
 		return result;
 	}
 }

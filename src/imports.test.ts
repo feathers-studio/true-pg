@@ -1,4 +1,4 @@
-import { Canonical } from "./extractor/canonicalise.ts";
+import { Canonical } from "./extractor/canonicalise/index.ts";
 import { Import, ImportList } from "./imports.ts";
 import { describe, it, expect } from "bun:test";
 import type { FolderStructure } from "./types.ts";
@@ -98,10 +98,7 @@ describe("Import Class", () => {
 		});
 
 		expect(importInstance).toBeInstanceOf(Import);
-		expect(
-			typeof importInstance.from === "function" ||
-				typeof importInstance.from === "string",
-		).toBe(true);
+		expect(typeof importInstance.from === "function" || typeof importInstance.from === "string").toBe(true);
 
 		if (typeof importInstance.from === "function") {
 			const generatedPath = importInstance.from(files);
@@ -125,10 +122,7 @@ describe("Import Class", () => {
 		});
 
 		expect(importInstance).toBeInstanceOf(Import);
-		expect(
-			typeof importInstance.from === "function" ||
-				typeof importInstance.from === "string",
-		).toBe(true);
+		expect(typeof importInstance.from === "function" || typeof importInstance.from === "string").toBe(true);
 
 		if (typeof importInstance.from === "function") {
 			const generatedPath = importInstance.from(files);
@@ -162,21 +156,15 @@ describe("ImportList Class", () => {
 	});
 
 	it("should merge import lists correctly", () => {
-		const list1 = new ImportList([
-			new Import({ from: "module1", namedImports: ["a"] }),
-		]);
-		const list2 = new ImportList([
-			new Import({ from: "module2", namedImports: ["b"] }),
-		]);
+		const list1 = new ImportList([new Import({ from: "module1", namedImports: ["a"] })]);
+		const list2 = new ImportList([new Import({ from: "module2", namedImports: ["b"] })]);
 
 		const mergedList = ImportList.merge([list1, list2]);
 		expect(mergedList.imports).toHaveLength(2);
 	});
 
 	it("should merge import lists correctly with empty list", () => {
-		const list1 = new ImportList([
-			new Import({ from: "module1", namedImports: ["a"] }),
-		]);
+		const list1 = new ImportList([new Import({ from: "module1", namedImports: ["a"] })]);
 		const list2 = new ImportList([]);
 
 		const mergedList = ImportList.merge([list1, list2]);

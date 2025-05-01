@@ -1,7 +1,7 @@
 import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 /**
  * Composite type in a schema with details.
@@ -19,7 +19,7 @@ const extractComposite = async (db: DbAdapter, composite: PgType<"composite">): 
 	const fullTypeName = `"${composite.schemaName}"."${composite.name}"`;
 
 	// Get canonical type information with all the metadata
-	const [canonical] = await db.canonicalise([fullTypeName]);
+	const canonical = db.enqueue(fullTypeName);
 
 	// Return the composite type with its canonical representation
 	return {

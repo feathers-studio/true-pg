@@ -1,7 +1,7 @@
 import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 /**
  * Range type in a schema with details.
@@ -18,8 +18,7 @@ const extractRange = async (db: DbAdapter, range: PgType<"range">): Promise<Rang
 	// Form the fully qualified type name
 	const fullTypeName = `"${range.schemaName}"."${range.name}"`;
 
-	// Get canonical type information with all the metadata
-	const [canonical] = await db.canonicalise([fullTypeName]);
+	const canonical = db.enqueue(fullTypeName);
 
 	// Return the composite type with its canonical representation
 	return {

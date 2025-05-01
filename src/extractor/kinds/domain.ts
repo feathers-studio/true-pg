@@ -1,7 +1,7 @@
 import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 /**
  * Domain type in a schema with details.
@@ -19,7 +19,7 @@ const extractDomain = async (db: DbAdapter, domain: PgType<"domain">): Promise<D
 	const fullTypeName = `"${domain.schemaName}"."${domain.name}"`;
 
 	// Get canonical type information with all the metadata
-	const [canonical] = await db.canonicalise([fullTypeName]);
+	const canonical = db.enqueue(fullTypeName);
 
 	// Return the composite type with its canonical representation
 	return {

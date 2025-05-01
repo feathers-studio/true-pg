@@ -3,7 +3,7 @@ import { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
 import commentMapQueryPart from "./parts/commentMapQueryPart.ts";
 import indexMapQueryPart from "./parts/indexMapQueryPart.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 export const updateActionMap = {
 	a: "NO ACTION",
@@ -349,16 +349,10 @@ const extractTable = async (db: DbAdapter, table: PgType<"table">): Promise<Tabl
 		[table.name, table.schemaName],
 	);
 
-	// Get the expanded type names from the query result
-	const definedTypes = columnsQuery.map(row => row.definedType);
-
-	// Use canonicaliseTypes to get detailed type information
-	const canonicalTypes = await db.canonicalise(definedTypes);
-
 	// Combine the column information with the canonical type information
-	const columns = columnsQuery.map((row: any, index: number) => ({
+	const columns = columnsQuery.map(row => ({
 		name: row.name,
-		type: canonicalTypes[index]!,
+		type: db.enqueue(row.definedType),
 		comment: row.comment,
 		defaultValue: row.defaultValue,
 		isPrimaryKey: row.isPrimaryKey,
@@ -368,7 +362,6 @@ const extractTable = async (db: DbAdapter, table: PgType<"table">): Promise<Tabl
 		isIdentity: row.isIdentity,
 		isUpdatable: row.isUpdatable,
 		generated: row.generated,
-		informationSchemaValue: row.informationSchemaValue,
 	}));
 
 	const indicesQuery = await db.query<TableIndex, [name: string, schemaName: string]>(

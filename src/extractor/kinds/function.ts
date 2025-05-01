@@ -1,7 +1,7 @@
 import type { DbAdapter } from "../adapter.ts";
 
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 import { parsePostgresTableDefinition } from "./util/parseInlineTable.ts";
 
 const parameterModeMap = {
@@ -171,7 +171,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (row.arg_names && !row.arg_modes) row.arg_modes = row.arg_names.map(() => "i");
 
 			const argModes = row.arg_modes?.map(mode => parameterModeMap[mode]) ?? [];
-			const canonical_arg_types = row.arg_types ? await db.canonicalise(row.arg_types) : [];
+			const canonical_arg_types = row.arg_types ? row.arg_types.map(db.enqueue) : [];
 
 			let returnType: FunctionReturnType;
 
@@ -180,7 +180,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 			if (tableMatch) {
 				const columnDefs = parsePostgresTableDefinition(row.declared_return_type);
 				const columnTypes = columnDefs.map(col => col.type);
-				const canonicalColumnTypes = await db.canonicalise(columnTypes);
+				const canonicalColumnTypes = columnTypes.map(db.enqueue);
 
 				returnType = {
 					kind: FunctionReturnTypeKind.InlineTable,
@@ -211,7 +211,7 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						// "c" = composite type
 						row.return_type_relation_kind === "c"
 					) {
-						const canonicalReturnType = (await db.canonicalise([row.return_type_string]))[0]!;
+						const canonicalReturnType = db.enqueue(row.return_type_string);
 						returnType = {
 							kind: FunctionReturnTypeKind.Regular,
 							type: canonicalReturnType,
@@ -221,18 +221,16 @@ async function extractFunction(db: DbAdapter, pgType: PgType<"function">): Promi
 						console.warn(
 							`Composite return type '${row.return_type_string}' has unexpected relkind '${row.return_type_relation_kind}' for function ${pgType.schemaName}.${row.name}`,
 						);
-						const canonicalReturnType = (await db.canonicalise([row.return_type_string]))[0]!;
 						returnType = {
 							kind: FunctionReturnTypeKind.Regular,
-							type: canonicalReturnType,
+							type: db.enqueue(row.return_type_string),
 							isSet: row.returns_set,
 						};
 					}
 				} else {
-					const canonicalReturnType = (await db.canonicalise([row.return_type_string]))[0]!;
 					returnType = {
 						kind: FunctionReturnTypeKind.Regular,
-						type: canonicalReturnType,
+						type: db.enqueue(row.return_type_string),
 						isSet: row.returns_set,
 					};
 				}

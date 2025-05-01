@@ -1,6 +1,6 @@
 import type { DbAdapter } from "../adapter.ts";
 import type { PgType } from "../pgtype.ts";
-import type { Canonical } from "../canonicalise.ts";
+import type { Canonical } from "../canonicalise/index.ts";
 
 // Note: isUpdatable is generally false for mat views and not typically stored directly
 export interface MaterializedViewColumn {
@@ -23,7 +23,7 @@ const extractMaterializedView = async (
 	db: DbAdapter,
 	mview: PgType<"materializedView">,
 ): Promise<MaterializedViewDetails> => {
-	// 1. Query for columns (using pg_attribute for potentially more accurate nullability)
+	// Query for columns (using pg_attribute for potentially more accurate nullability)
 	const columnQuery = await db.query<
 		{
 			name: string;
@@ -60,19 +60,15 @@ const extractMaterializedView = async (
 		[mview.name, mview.schemaName],
 	);
 
-	// 2. Get canonical types
-	const definedTypes = columnQuery.map(row => row.definedType);
-	const canonicalTypes = await db.canonicalise(definedTypes);
-
-	const columns: MaterializedViewColumn[] = columnQuery.map((row, index) => ({
+	const columns: MaterializedViewColumn[] = columnQuery.map(row => ({
 		name: row.name,
-		type: canonicalTypes[index]!,
+		type: db.enqueue(row.definedType),
 		isNullable: row.isNullable,
 		ordinalPosition: row.ordinalPosition,
 		comment: row.comment,
 	}));
 
-	// 3. Query for materialized view definition, comment, and properties
+	// Query for materialized view definition, comment, and properties
 	const mviewInfoQuery = await db.query<
 		{
 			definition: string;

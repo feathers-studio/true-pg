@@ -4,48 +4,11 @@ import { rm, mkdir, writeFile } from "node:fs/promises";
 import { allowed_kind_names, type FolderStructure, type createGenerator } from "./types.ts";
 import { ImportList } from "./imports.ts";
 import { existsSync } from "node:fs";
-import { join, parens } from "./util.ts";
+import { join, time, ansi } from "./util.ts";
 
 import { join as joinpath } from "node:path";
 import { type TruePGConfig, type ValidatedConfig, config, generators as builtin_generators } from "./config.ts";
 export { type TruePGConfig, type ValidatedConfig, config };
-
-const NO_COLOR = Boolean(process.env.NO_COLOR || process.env.CI);
-const red = (str: string | number) => (NO_COLOR ? str : `\x1b[31m${str}\x1b[0m`);
-const green = (str: string | number) => (NO_COLOR ? str : `\x1b[32m${str}\x1b[0m`);
-const yellow = (str: string | number) => (NO_COLOR ? str : `\x1b[33m${str}\x1b[0m`);
-const blue = (str: string | number) => (NO_COLOR ? str : `\x1b[34m${str}\x1b[0m`);
-const bold = (str: string | number) => (NO_COLOR ? str : `\x1b[1m${str}\x1b[0m`);
-const underline = (str: string | number) => (NO_COLOR ? str : `\x1b[4m${str}\x1b[0m`);
-
-const formatTime = (time: number): string => {
-	const mins = Math.floor(time / 60000);
-	const secs = Math.floor((time % 60000) / 1000);
-	const ms = Math.floor(time % 1000);
-	const us = Math.floor((time * 1000) % 1000)
-		.toString()
-		.padStart(3, "0");
-
-	const parts = [];
-	if (mins) parts.push(mins + "m");
-	if (secs) parts.push(secs + "s");
-	if (!mins) parts.push(ms + (!secs && us ? "." + us : "") + "ms");
-
-	return parts.join("");
-};
-
-const THRESHOLD1 = 800;
-const THRESHOLD2 = 1500;
-
-const time = (start: number, addParens = true) => {
-	const diff = performance.now() - start;
-	const diffstr = formatTime(diff);
-	const str = addParens ? parens(diffstr) : diffstr;
-
-	if (diff < THRESHOLD1) return green(str);
-	if (diff < THRESHOLD2) return yellow(str);
-	return red(str);
-};
 
 const filter_overloaded_functions = (functions: FunctionDetails[]) => {
 	const counts = functions.reduce((acc, func) => {
@@ -289,6 +252,10 @@ export async function generate(opts: TruePGConfig, generators?: createGenerator[
 	await mkdir(out, { recursive: true });
 	const count = await multifile(generators, schemas, validated);
 
-	console.log("Completed in %s, %s generated.", time(start, false), bold(underline(blue(count + " files"))));
+	console.log(
+		"Completed in %s, %s generated.",
+		time(start, false),
+		ansi.bold(ansi.underline(ansi.blue(count + " files"))),
+	);
 	console.log();
 }

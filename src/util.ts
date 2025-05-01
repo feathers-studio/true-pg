@@ -2,6 +2,54 @@ export const unreachable = (value: never): never => {
 	throw new Error(`Fatal: Reached unreachable code: ${value}`);
 };
 
+const NO_COLOR = Boolean(process.env.NO_COLOR || process.env.CI);
+
+export const ansi_esc = {
+	red: `\x1b[31m`,
+	green: `\x1b[32m`,
+	yellow: `\x1b[33m`,
+	blue: `\x1b[34m`,
+	bold: `\x1b[1m`,
+	underline: `\x1b[4m`,
+	reset: `\x1b[0m`,
+};
+
+// just dummy each colour to an empty string if NO_COLOR is set
+if (NO_COLOR) for (const key in ansi_esc) ansi_esc[key as keyof typeof ansi_esc] = "";
+
+export const ansi = Object.fromEntries(
+	Object.entries(ansi_esc).map(([key, value]) => [key, (str: string | number) => value + str + ansi_esc.reset]),
+) as { [esc in keyof typeof ansi_esc]: (str: string | number) => string };
+
+const formatTime = (time: number): string => {
+	const mins = Math.floor(time / 60000);
+	const secs = Math.floor((time % 60000) / 1000);
+	const ms = Math.floor(time % 1000);
+	const us = Math.floor((time * 1000) % 1000)
+		.toString()
+		.padStart(3, "0");
+
+	const parts = [];
+	if (mins) parts.push(mins + "m");
+	if (secs) parts.push(secs + "s");
+	if (!mins) parts.push(ms + (!secs && us ? "." + us : "") + "ms");
+
+	return parts.join("");
+};
+
+const THRESHOLD1 = 800;
+const THRESHOLD2 = 1500;
+
+export const time = (start: number, addParens = true) => {
+	const diff = performance.now() - start;
+	const diffstr = formatTime(diff);
+	const str = addParens ? parens(diffstr) : diffstr;
+
+	if (diff < THRESHOLD1) return ansi.green(str);
+	if (diff < THRESHOLD2) return ansi.yellow(str);
+	return ansi.red(str);
+};
+
 export const eq = <T>(a: T, b: T): boolean => {
 	if (a === b) return true;
 	if (a == null || b == null) return false;

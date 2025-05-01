@@ -1,21 +1,6 @@
-export type MaybePromise<T> = T | Promise<T>;
-
 export const unreachable = (value: never): never => {
 	throw new Error(`Fatal: Reached unreachable code: ${value}`);
 };
-
-export class Deferred<T> {
-	resolve!: (value: T) => void;
-	reject!: (reason?: any) => void;
-	promise: Promise<T>;
-
-	constructor() {
-		this.promise = new Promise<T>((resolve, reject) => {
-			this.resolve = resolve;
-			this.reject = reject;
-		});
-	}
-}
 
 export const eq = <T>(a: T, b: T): boolean => {
 	if (a === b) return true;

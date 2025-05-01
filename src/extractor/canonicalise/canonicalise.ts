@@ -1,9 +1,7 @@
 import { Canonical, type ExclusiveCanonProps } from "./types.ts";
 import { DbAdapter } from "../adapter.ts";
-import { Deferred, unreachable, type MaybePromise } from "../../util.ts";
 import { resolveBasicInfo, type ResolvedBasicInfo } from "./resolve.ts";
 import { parseRawType } from "./parse.ts";
-import type { ParsedType } from "./parse.ts";
 import { getEnumDetails } from "./enum.ts";
 import { getCompositeDetails } from "./composite.ts";
 import { getDomainDetails } from "./domain.ts";
@@ -16,25 +14,35 @@ export interface QueueMember {
 	out: Canonical;
 }
 
-// The final boss strategy
+// The Final Strategy
 //
 // Insert placeholder objects wherever a Canonical is needed
 // After extracting all tables, views, functions, etc. resolve all Canonicals
 // Then map over the input types and wait for all cached promises to resolve
 // Finally patch all Canonicals with resolved values
 
-export const canonicaliseQueue = async (db: DbAdapter, queue: QueueMember[]): Promise<Canonical[]> => {
+export const canonicaliseQueue = async (
+	db: DbAdapter,
+	queue: QueueMember[],
+	resolveCache: Map<string, ResolvedBasicInfo> = new Map(),
+	canonCache: Map<string, ExclusiveCanonProps> = new Map(),
+): Promise<Canonical[]> => {
 	if (queue.length === 0) return [];
 
 	const parsed = queue.map(q => parseRawType(q.type));
-	const plain = parsed.map(p => p.plain);
+	const plain = [...new Set(parsed.filter(p => !resolveCache.has(p.plain)).map(p => p.plain))];
 	const resolved = await resolveBasicInfo(db, plain);
+
+	plain.forEach((p, i) => {
+		const r = resolved[i];
+		if (!r) throw new Error(`(Unreachable) Could not find resolved basic info for ${p}`);
+		resolveCache.set(p, r);
+	});
 
 	const unknown = resolved.filter(r => r.kind === Canonical.Kind.Unknown);
 	if (unknown.length > 0) {
-		throw new Error(
-			"Received kind 'unknown', could not resolve types: " + unknown.map(u => u.canonical_name).join(", "),
-		);
+		const types = unknown.map(u => u.canonical_name).join(", ");
+		throw new Error(`Received kind 'unknown', could not resolve ${unknown.length} types: ${types}`);
 	}
 
 	const internalQueue: QueueMember[] = [];
@@ -45,49 +53,57 @@ export const canonicaliseQueue = async (db: DbAdapter, queue: QueueMember[]): Pr
 	};
 
 	const batches = {
-		bases: [] as ResolvedBasicInfo[],
 		enums: [] as ResolvedBasicInfo[],
 		composites: [] as ResolvedBasicInfo[],
 		domains: [] as ResolvedBasicInfo[],
 		ranges: [] as ResolvedBasicInfo[],
-		pseudos: [] as ResolvedBasicInfo[],
 	};
+
+	let seen = new Set<string>();
+
+	const Kind = Canonical.Kind;
 
 	// split in one loop instead of 4 filters
 	for (const r of resolved) {
-		if (r.kind === Canonical.Kind.Base) batches.bases.push(r);
-		if (r.kind === Canonical.Kind.Enum) batches.enums.push(r);
-		if (r.kind === Canonical.Kind.Composite) batches.composites.push(r);
-		if (r.kind === Canonical.Kind.Domain) batches.domains.push(r);
-		if (r.kind === Canonical.Kind.Range) batches.ranges.push(r);
-		if (r.kind === Canonical.Kind.Pseudo) batches.pseudos.push(r);
+		if (canonCache.has(r.canonical_name)) continue;
+
+		// deduplicate
+		if (seen.has(r.canonical_name)) continue;
+		seen.add(r.canonical_name);
+
+		if (r.kind === Kind.Enum) batches.enums.push(r);
+		if (r.kind === Kind.Composite) batches.composites.push(r);
+		if (r.kind === Kind.Domain) batches.domains.push(r);
+		if (r.kind === Kind.Range) batches.ranges.push(r);
+
+		// special cases because these are not further extracted
+		if (r.kind === Kind.Base || r.kind === Kind.Pseudo)
+			canonCache.set(r.canonical_name, { kind: r.kind, canonical_name: r.canonical_name } as const);
 	}
 
-	const canonicalMap = new Map<string, ExclusiveCanonProps>();
+	// @ts-expect-error allow GC
+	seen = null;
 
 	{
-		const Kind = Canonical.Kind;
-
-		const bases = batches.bases.map(b => ({ kind: Kind.Base, canonical_name: b.canonical_name } as const));
+		// extract all in parallel
 		const [enums, composites, domains, ranges] = await Promise.all([
 			getEnumDetails(db, batches.enums),
 			getCompositeDetails(db, q, batches.composites),
 			getDomainDetails(db, q, batches.domains),
 			getRangeDetails(db, q, batches.ranges),
 		] as const);
-		const pseudo = batches.pseudos.map(p => ({ kind: Kind.Pseudo, canonical_name: p.canonical_name } as const));
 
-		for (const b of bases) canonicalMap.set(b.canonical_name, b);
-		for (const e of enums) canonicalMap.set(e.canonical_name, e);
-		for (const c of composites) canonicalMap.set(c.canonical_name, c);
-		for (const d of domains) canonicalMap.set(d.canonical_name, d);
-		for (const r of ranges) canonicalMap.set(r.canonical_name, r);
-		for (const p of pseudo) canonicalMap.set(p.canonical_name, p);
+		for (const e of enums) canonCache.set(e.canonical_name, e);
+		for (const c of composites) canonCache.set(c.canonical_name, c);
+		for (const d of domains) canonCache.set(d.canonical_name, d);
+		for (const r of ranges) canonCache.set(r.canonical_name, r);
 	}
 
 	await Promise.all(
-		resolved.map(async (info, index) => {
-			const p = parsed[index]!;
+		parsed.map(async (p, index) => {
+			const info = resolveCache.get(p.plain);
+			if (!info) throw new Error(`(Unreachable) Could not find resolved basic info for ${p.plain}`);
+
 			const m = queue[index]!;
 
 			try {
@@ -109,15 +125,12 @@ export const canonicaliseQueue = async (db: DbAdapter, queue: QueueMember[]): Pr
 
 				const kind = info.kind;
 
-				if (kind === Canonical.Kind.Unknown) {
-					throw new Error(`Unknown type: ${info.canonical_name}`);
-				}
+				if (kind === Canonical.Kind.Unknown)
+					throw new Error(`Could not find canonical type for "${info.schema}.${info.canonical_name}"`);
 
-				const exclusive = canonicalMap.get(info.canonical_name);
+				const exclusive = canonCache.get(info.canonical_name);
 
-				if (!exclusive) {
-					throw new Error(`(Unreachable) Could not find canonical type for ${info.canonical_name}`);
-				}
+				if (!exclusive) throw new Error(`(Unreachable) Could not find canonical type for ${info.canonical_name}`);
 
 				const result = { ...common, ...exclusive } as Canonical;
 				Object.assign(m.out, result);
@@ -128,7 +141,7 @@ export const canonicaliseQueue = async (db: DbAdapter, queue: QueueMember[]): Pr
 	);
 
 	if (internalQueue.length > 0) {
-		await canonicaliseQueue(db, internalQueue);
+		await canonicaliseQueue(db, internalQueue, resolveCache, canonCache);
 	}
 
 	return queue.map(m => m.out);
